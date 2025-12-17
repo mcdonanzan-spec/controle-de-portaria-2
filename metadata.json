@@ -1,0 +1,7 @@
+{
+  "name": "Controle de Portaria para Obras",
+  "description": "Um aplicativo para gerenciar o acesso de visitantes e entregas em canteiros de obras, incluindo captura de fotos, registro de informações e geração de relatórios.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
