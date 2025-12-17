@@ -42,51 +42,50 @@ const App: React.FC = () => {
     return () => subscription.unsubscribe();
   }, []);
 
-  // Load data from localStorage on initial render
-  useEffect(() => {
+  // Fetch Data from Supabase
+  const fetchData = useCallback(async () => {
     if (!session) return;
-    try {
-      const storedVisitors = localStorage.getItem('visitors');
-      if (storedVisitors) {
-        const parsedVisitors: Visitor[] = JSON.parse(storedVisitors).map((v: any) => ({
-          ...v,
-          entryTime: new Date(v.entryTime),
-          exitTime: v.exitTime ? new Date(v.exitTime) : undefined,
-        }));
-        setVisitors(parsedVisitors);
-      }
-      const storedDeliveries = localStorage.getItem('deliveries');
-      if (storedDeliveries) {
-        const parsedDeliveries: Delivery[] = JSON.parse(storedDeliveries).map((d: any) => ({
-          ...d,
-          entryTime: new Date(d.entryTime),
-          exitTime: d.exitTime ? new Date(d.exitTime) : undefined,
-        }));
-        setDeliveries(parsedDeliveries);
-      }
-    } catch (error) {
-      console.error("Failed to load data from localStorage", error);
+    
+    // Fetch Visitors
+    const { data: vData, error: vError } = await supabase
+      .from('visitors')
+      .select('*')
+      .order('entry_time', { ascending: false });
+    
+    if (!vError && vData) {
+      setVisitors(vData.map(v => ({
+        ...v,
+        entryTime: new Date(v.entry_time),
+        exitTime: v.exit_time ? new Date(v.exit_time) : undefined,
+        epi: { helmet: v.helmet, boots: v.boots, glasses: v.glasses },
+        vehicle: { model: v.vehicle_model, color: v.vehicle_color, plate: v.vehicle_plate }
+      })));
+    }
+
+    // Fetch Deliveries
+    const { data: dData, error: dError } = await supabase
+      .from('deliveries')
+      .select('*')
+      .order('entry_time', { ascending: false });
+    
+    if (!dError && dData) {
+      setDeliveries(dData.map(d => ({
+        ...d,
+        entryTime: new Date(d.entry_time),
+        exitTime: d.exit_time ? new Date(d.exit_time) : undefined,
+        invoicePhoto: d.invoice_photo,
+        platePhoto: d.plate_photo,
+        driverName: d.driver_name,
+        driverDocument: d.driver_document,
+        invoiceNumber: d.invoice_number,
+        licensePlate: d.license_plate
+      })));
     }
   }, [session]);
 
-  // Save data to localStorage whenever it changes
   useEffect(() => {
-    if (!session) return;
-    try {
-      localStorage.setItem('visitors', JSON.stringify(visitors));
-    } catch (error) {
-      console.error("Failed to save visitors to localStorage", error);
-    }
-  }, [visitors, session]);
-
-  useEffect(() => {
-    if (!session) return;
-    try {
-      localStorage.setItem('deliveries', JSON.stringify(deliveries));
-    } catch (error) {
-      console.error("Failed to save deliveries to localStorage", error);
-    }
-  }, [deliveries, session]);
+    fetchData();
+  }, [fetchData]);
   
   const showToast = (message: string) => {
     setToast({ message, show: true });
@@ -118,38 +117,70 @@ const App: React.FC = () => {
     );
   };
 
-  const addVisitor = useCallback((visitorData: Omit<Visitor, 'id' | 'entryTime' | 'exitTime'>) => {
-    const newVisitor: Visitor = {
-      ...visitorData,
-      id: Date.now(),
-      entryTime: new Date(),
-    };
-    setVisitors(prev => [newVisitor, ...prev]);
-  }, []);
+  const addVisitor = useCallback(async (visitorData: Omit<Visitor, 'id' | 'entryTime' | 'exitTime'>) => {
+    const { data, error } = await supabase.from('visitors').insert([{
+      name: visitorData.name,
+      document: visitorData.document,
+      company: visitorData.company,
+      visit_reason: visitorData.visitReason,
+      person_visited: visitorData.personVisited,
+      photo: visitorData.photo,
+      helmet: visitorData.epi.helmet,
+      boots: visitorData.epi.boots,
+      glasses: visitorData.epi.glasses,
+      vehicle_model: visitorData.vehicle.model,
+      vehicle_color: visitorData.vehicle.color,
+      vehicle_plate: visitorData.vehicle.plate,
+      user_id: session?.user?.id
+    }]).select();
 
-  const addDelivery = useCallback((deliveryData: Omit<Delivery, 'id' | 'entryTime' | 'exitTime'>) => {
-    const newDelivery: Delivery = {
-      ...deliveryData,
-      id: Date.now(),
-      entryTime: new Date(),
-    };
-    setDeliveries(prev => [newDelivery, ...prev]);
-  }, []);
-
-  const markExit = useCallback((type: 'visitor' | 'delivery', id: number) => {
-    const now = new Date();
-    if (type === 'visitor') {
-      setVisitors(prev => prev.map(v => v.id === id ? { ...v, exitTime: now } : v));
+    if (!error) {
+      fetchData();
+      showToast('Visitante registrado no banco de dados!');
     } else {
-      setDeliveries(prev => prev.map(d => d.id === id ? { ...d, exitTime: now } : d));
+      console.error(error);
+      alert('Erro ao salvar no banco de dados. Verifique sua conexão.');
     }
-    showToast("Saída registrada com sucesso!");
-  }, []);
+  }, [session, fetchData]);
+
+  const addDelivery = useCallback(async (deliveryData: Omit<Delivery, 'id' | 'entryTime' | 'exitTime'>) => {
+    const { data, error } = await supabase.from('deliveries').insert([{
+      supplier: deliveryData.supplier,
+      driver_name: deliveryData.driverName,
+      driver_document: deliveryData.driverDocument,
+      invoice_number: deliveryData.invoiceNumber,
+      license_plate: deliveryData.licensePlate,
+      invoice_photo: deliveryData.invoicePhoto,
+      plate_photo: deliveryData.platePhoto,
+      user_id: session?.user?.id
+    }]).select();
+
+    if (!error) {
+      fetchData();
+      showToast('Entrega registrada no banco de dados!');
+    } else {
+      console.error(error);
+      alert('Erro ao salvar no banco de dados.');
+    }
+  }, [session, fetchData]);
+
+  const markExit = useCallback(async (type: 'visitor' | 'delivery', id: number) => {
+    const table = type === 'visitor' ? 'visitors' : 'deliveries';
+    const { error } = await supabase
+      .from(table)
+      .update({ exit_time: new Date().toISOString() })
+      .eq('id', id);
+
+    if (!error) {
+      fetchData();
+      showToast("Saída registrada com sucesso!");
+    }
+  }, [fetchData]);
   
   const handleMarkExitRequest = (type: 'visitor' | 'delivery', id: number, name: string) => {
     showConfirmation(
         `Confirmar Saída`,
-        `Deseja realmente registrar a saída de ${name}? Esta ação não pode ser desfeita.`,
+        `Deseja realmente registrar a saída de ${name}?`,
         () => markExit(type, id)
     );
   };
@@ -157,7 +188,7 @@ const App: React.FC = () => {
   if (loading) {
     return (
       <div className="h-screen w-full flex items-center justify-center bg-brand-charcoal">
-        <div className="text-brand-amber animate-pulse font-bold tracking-widest uppercase">Carregando Portaria...</div>
+        <div className="text-brand-amber animate-pulse font-bold tracking-widest uppercase">Carregando Sistema...</div>
       </div>
     );
   }
