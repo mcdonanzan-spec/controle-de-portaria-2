@@ -1,21 +1,49 @@
 
 import { createClient } from '@supabase/supabase-js';
 
-// Função segura para pegar variáveis de ambiente sem travar o app
+// Função para tentar capturar variáveis de ambiente de forma segura no navegador
 const getEnv = (key: string): string => {
   try {
-    return (typeof process !== 'undefined' && process.env && process.env[key]) || '';
+    // Tenta process.env (Vercel)
+    if (typeof process !== 'undefined' && process.env && process.env[key]) {
+      return process.env[key] || '';
+    }
+    // Tenta import.meta.env (Vite/Modern ESM)
+    // @ts-ignore
+    if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env[key]) {
+      // @ts-ignore
+      return import.meta.env[key] || '';
+    }
   } catch (e) {
-    return '';
+    // Silently fail, keys will be empty
   }
+  return '';
 };
 
-const supabaseUrl = getEnv('SUPABASE_URL');
-const supabaseAnonKey = getEnv('SUPABASE_ANON_KEY');
+let supabaseUrl = getEnv('SUPABASE_URL').trim();
+const supabaseAnonKey = getEnv('SUPABASE_ANON_KEY').trim();
 
-// Se as chaves estiverem vazias, o cliente será criado com placeholders
-// O componente Auth.tsx já está preparado para mostrar o erro amigável "Failed to fetch"
-export const supabase = createClient(
-  supabaseUrl || 'https://placeholder.supabase.co',
-  supabaseAnonKey || 'placeholder'
-);
+// LIMPEZA EXPERT: Garante que a URL não tenha barra no final e tenha o protocolo correto
+if (supabaseUrl) {
+  supabaseUrl = supabaseUrl.replace(/\/$/, '');
+  if (!supabaseUrl.startsWith('http')) {
+    supabaseUrl = `https://${supabaseUrl}`;
+  }
+}
+
+// Verifica se a configuração é válida (não é vazia e não é o placeholder antigo)
+export const isConfigured = !!supabaseUrl && 
+                           !!supabaseAnonKey && 
+                           !supabaseUrl.includes('placeholder') &&
+                           !supabaseUrl.includes('missing-configuration');
+
+// Se não estiver configurado, usa um domínio que gerará um erro claro de DNS
+const finalUrl = isConfigured ? supabaseUrl : 'https://configuracao-ausente.supabase.co';
+const finalKey = isConfigured ? supabaseAnonKey : 'chave-ausente';
+
+export const supabase = createClient(finalUrl, finalKey, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+  }
+});

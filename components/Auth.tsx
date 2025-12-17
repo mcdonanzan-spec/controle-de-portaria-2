@@ -1,6 +1,6 @@
 
-import React, { useState } from 'react';
-import { supabase } from '../lib/supabase';
+import React, { useState, useEffect } from 'react';
+import { supabase, isConfigured } from '../lib/supabase';
 import { BuildingIcon, LockClosedIcon, UserIcon } from './icons';
 
 const Auth: React.FC = () => {
@@ -8,15 +8,31 @@ const Auth: React.FC = () => {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [isSignUp, setIsSignUp] = useState(false);
-    const [message, setMessage] = useState<{ text: string, type: 'error' | 'success' } | null>(null);
+    const [message, setMessage] = useState<{ text: string, type: 'error' | 'success' | 'warning' } | null>(null);
+
+    // Verifica configuração ao carregar
+    useEffect(() => {
+        if (!isConfigured) {
+            setMessage({ 
+                text: 'Atenção: O sistema não detectou as chaves do Supabase. Verifique se as variáveis SUPABASE_URL e SUPABASE_ANON_KEY foram adicionadas na Vercel e se você fez um novo "Redeploy".', 
+                type: 'warning' 
+            });
+        }
+    }, []);
 
     const handleAuth = async (e: React.FormEvent) => {
         e.preventDefault();
         setLoading(true);
         setMessage(null);
 
+        if (!isConfigured) {
+            setMessage({ text: 'Erro crítico: As chaves de acesso ao banco de dados não foram encontradas no ambiente.', type: 'error' });
+            setLoading(false);
+            return;
+        }
+
         if (!email || !password) {
-            setMessage({ text: 'Preencha todos os campos.', type: 'error' });
+            setMessage({ text: 'Preencha e-mail e senha.', type: 'error' });
             setLoading(false);
             return;
         }
@@ -30,19 +46,31 @@ const Auth: React.FC = () => {
                         emailRedirectTo: window.location.origin
                     }
                 });
+                
                 if (error) throw error;
-                setMessage({ text: 'Cadastro solicitado! Verifique seu e-mail para confirmar o acesso.', type: 'success' });
+                
+                if (data?.user && !data?.session) {
+                    setMessage({ text: 'Acesso solicitado! Tente fazer login agora (como a confirmação de e-mail está off, deve funcionar direto).', type: 'success' });
+                } else if (data?.session) {
+                    setMessage({ text: 'Conta criada e logada com sucesso!', type: 'success' });
+                }
             } else {
                 const { error } = await supabase.auth.signInWithPassword({ email, password });
                 if (error) throw error;
             }
         } catch (error: any) {
+            console.error("Auth Error:", error);
             let errorMsg = error.message;
-            if (errorMsg === 'Failed to fetch') {
-                errorMsg = 'Erro de conexão: Verifique se as chaves do Supabase na Vercel estão corretas e se você fez o Redeploy.';
+            
+            // Tratamento amigável de erros técnicos
+            if (errorMsg === 'Failed to fetch' || errorMsg.includes('NetworkError')) {
+                errorMsg = 'Erro de Conexão: O app não conseguiu falar com o Supabase. Isso geralmente é causado por uma URL incorreta na Vercel ou o projeto do Supabase estar pausado.';
             } else if (errorMsg === 'Invalid login credentials') {
                 errorMsg = 'E-mail ou senha incorretos.';
+            } else if (errorMsg.includes('Email confirmation')) {
+                errorMsg = 'O Supabase ainda está exigindo confirmação de e-mail. Verifique sua caixa de entrada ou desative essa opção no painel do Supabase.';
             }
+            
             setMessage({ text: errorMsg, type: 'error' });
         } finally {
             setLoading(false);
@@ -63,6 +91,8 @@ const Auth: React.FC = () => {
                         <div className={`p-4 rounded-md text-sm font-semibold border ${
                             message.type === 'error' 
                             ? 'bg-feedback-error/20 text-feedback-error border-feedback-error/30' 
+                            : message.type === 'warning'
+                            ? 'bg-brand-amber/20 text-brand-amber border-brand-amber/30'
                             : 'bg-feedback-success/20 text-feedback-success border-feedback-success/30'
                         }`}>
                             {message.text}
