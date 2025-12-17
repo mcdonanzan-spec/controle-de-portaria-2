@@ -15,17 +15,35 @@ const Auth: React.FC = () => {
         setLoading(true);
         setMessage(null);
 
+        if (!email || !password) {
+            setMessage({ text: 'Preencha todos os campos.', type: 'error' });
+            setLoading(false);
+            return;
+        }
+
         try {
             if (isSignUp) {
-                const { error } = await supabase.auth.signUp({ email, password });
+                const { data, error } = await supabase.auth.signUp({ 
+                    email, 
+                    password,
+                    options: {
+                        emailRedirectTo: window.location.origin
+                    }
+                });
                 if (error) throw error;
-                setMessage({ text: 'Cadastro realizado! Verifique seu e-mail.', type: 'success' });
+                setMessage({ text: 'Cadastro solicitado! Verifique seu e-mail para confirmar o acesso.', type: 'success' });
             } else {
                 const { error } = await supabase.auth.signInWithPassword({ email, password });
                 if (error) throw error;
             }
         } catch (error: any) {
-            setMessage({ text: error.message || 'Erro ao processar autenticação', type: 'error' });
+            let errorMsg = error.message;
+            if (errorMsg === 'Failed to fetch') {
+                errorMsg = 'Erro de conexão: Verifique se as chaves do Supabase na Vercel estão corretas e se você fez o Redeploy.';
+            } else if (errorMsg === 'Invalid login credentials') {
+                errorMsg = 'E-mail ou senha incorretos.';
+            }
+            setMessage({ text: errorMsg, type: 'error' });
         } finally {
             setLoading(false);
         }
@@ -42,7 +60,11 @@ const Auth: React.FC = () => {
                 
                 <form onSubmit={handleAuth} className="p-8 space-y-6">
                     {message && (
-                        <div className={`p-4 rounded-md text-sm font-semibold ${message.type === 'error' ? 'bg-feedback-error/20 text-feedback-error border border-feedback-error/30' : 'bg-feedback-success/20 text-feedback-success border border-feedback-success/30'}`}>
+                        <div className={`p-4 rounded-md text-sm font-semibold border ${
+                            message.type === 'error' 
+                            ? 'bg-feedback-error/20 text-feedback-error border-feedback-error/30' 
+                            : 'bg-feedback-success/20 text-feedback-success border-feedback-success/30'
+                        }`}>
                             {message.text}
                         </div>
                     )}
@@ -88,7 +110,10 @@ const Auth: React.FC = () => {
                     <div className="text-center pt-4 border-t border-brand-steel">
                         <button 
                             type="button"
-                            onClick={() => setIsSignUp(!isSignUp)}
+                            onClick={() => {
+                                setIsSignUp(!isSignUp);
+                                setMessage(null);
+                            }}
                             className="text-brand-text-muted text-xs hover:text-brand-amber transition-colors"
                         >
                             {isSignUp ? 'Já possui acesso? Faça login' : 'Primeiro acesso? Solicite cadastro'}
