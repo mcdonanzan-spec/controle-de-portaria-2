@@ -2,30 +2,34 @@
 import { createClient } from '@supabase/supabase-js';
 
 /**
- * Função expert para capturar variáveis de ambiente.
- * No navegador, dependendo do bundler (Vite, Webpack, etc.), 
- * as variáveis podem estar em process.env ou import.meta.env.
+ * Tenta encontrar as chaves do Supabase em diversas variações de ambiente.
+ * Alguns ambientes (como Vite ou Next.js) exigem prefixos específicos.
  */
 const getEnv = (key: string): string => {
+  const variations = [
+    key,
+    `VITE_${key}`,
+    `NEXT_PUBLIC_${key}`,
+    `REACT_APP_${key}`
+  ];
+
   try {
-    // 1. Tenta o padrão Node/Vercel
-    if (typeof process !== 'undefined' && process.env && process.env[key]) {
-      return process.env[key] || '';
+    // Busca em process.env
+    if (typeof process !== 'undefined' && process.env) {
+      for (const v of variations) {
+        if (process.env[v]) return process.env[v] as string;
+      }
     }
-    // 2. Tenta o padrão Vite/ESM
+    // Busca em import.meta.env
     // @ts-ignore
-    if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env[key]) {
-      // @ts-ignore
-      return import.meta.env[key] || '';
-    }
-    // 3. Tenta window.env (caso de injeção manual)
-    // @ts-ignore
-    if (typeof window !== 'undefined' && window._env_ && window._env_[key]) {
-      // @ts-ignore
-      return window._env_[key] || '';
+    if (typeof import.meta !== 'undefined' && import.meta.env) {
+      for (const v of variations) {
+        // @ts-ignore
+        if (import.meta.env[v]) return import.meta.env[v] as string;
+      }
     }
   } catch (e) {
-    console.warn(`Erro ao tentar acessar a variável ${key}:`, e);
+    // Silently fail
   }
   return '';
 };
@@ -33,39 +37,34 @@ const getEnv = (key: string): string => {
 const rawUrl = getEnv('SUPABASE_URL');
 const rawKey = getEnv('SUPABASE_ANON_KEY');
 
-// Limpeza de strings (remove espaços, aspas ou barras extras)
+// Limpeza rigorosa
 export const supabaseUrl = rawUrl.trim().replace(/['"]/g, '').replace(/\/$/, '');
 export const supabaseAnonKey = rawKey.trim().replace(/['"]/g, '');
 
-// Verifica se a configuração é válida
+// Critérios de configuração válida
 export const isConfigured = 
   !!supabaseUrl && 
   !!supabaseAnonKey && 
   supabaseUrl.startsWith('http') && 
   !supabaseUrl.includes('placeholder') &&
-  !supabaseUrl.includes('configuracao-ausente');
+  supabaseAnonKey.length > 20; // Chaves Anon costumam ser longas
 
-// Log de diagnóstico (apenas no console para o desenvolvedor ver se as chaves chegaram)
+// Log de diagnóstico técnico no console (F12)
 if (typeof window !== 'undefined') {
-    if (!isConfigured) {
-        console.group('🛠️ Diagnóstico Supabase');
-        console.warn('Status: ❌ NÃO CONFIGURADO');
-        console.log('SUPABASE_URL detectada:', supabaseUrl ? 'Sim (mas verifique o formato)' : 'Não');
-        console.log('SUPABASE_ANON_KEY detectada:', supabaseAnonKey ? 'Sim' : 'Não');
-        console.groupEnd();
-    } else {
-        console.log('🛠️ Supabase configurado com sucesso!');
-    }
+  console.group('🔧 Status da Conexão Supabase');
+  console.log('URL Configurada:', !!supabaseUrl);
+  console.log('Chave Configurada:', !!supabaseAnonKey);
+  console.log('Tamanho da Chave:', supabaseAnonKey.length);
+  console.log('Configuração Válida:', isConfigured);
+  console.groupEnd();
 }
 
-// Se não estiver configurado, usamos URLs que falham de forma previsível
-const finalUrl = isConfigured ? supabaseUrl : 'https://projeto-nao-configurado.supabase.co';
-const finalKey = isConfigured ? supabaseAnonKey : 'chave-nao-configurada';
+const finalUrl = isConfigured ? supabaseUrl : 'https://missing-config.supabase.co';
+const finalKey = isConfigured ? supabaseAnonKey : 'missing-key';
 
 export const supabase = createClient(finalUrl, finalKey, {
   auth: {
     persistSession: true,
     autoRefreshToken: true,
-    detectSessionInUrl: true
   }
 });
