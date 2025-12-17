@@ -1,39 +1,34 @@
 
 import { createClient } from '@supabase/supabase-js';
 
-// Função para tentar capturar a variável de qualquer lugar possível
-const tryGet = (key: string): string | undefined => {
-  // @ts-ignore
-  return process?.env?.[key] || 
-         // @ts-ignore
-         process?.env?.[`VITE_${key}`] || 
-         // @ts-ignore
-         import.meta?.env?.[key] || 
-         // @ts-ignore
-         import.meta?.env?.[`VITE_${key}`] ||
-         window?.[key as any];
+const tryGet = (key: string): string => {
+  try {
+    // @ts-ignore
+    const val = (typeof process !== 'undefined' && process.env ? process.env[key] : null) || 
+                // @ts-ignore
+                (typeof import.meta !== 'undefined' && import.meta.env ? import.meta.env[key] : null) ||
+                // @ts-ignore
+                (typeof window !== 'undefined' ? window[key] : null);
+    return val ? String(val).trim().replace(/['"]/g, '') : '';
+  } catch (e) {
+    return '';
+  }
 };
 
-const rawUrl = tryGet('SUPABASE_URL') || tryGet('URL_SUPABASE') || '';
-const rawKey = tryGet('SUPABASE_ANON_KEY') || tryGet('ANON_KEY_SUPABASE') || '';
+const url = tryGet('SUPABASE_URL') || tryGet('URL_SUPABASE');
+const key = tryGet('SUPABASE_ANON_KEY') || tryGet('ANON_KEY_SUPABASE');
 
-export const supabaseUrl = rawUrl.trim().replace(/['"]/g, '').replace(/\/$/, '');
-export const supabaseAnonKey = rawKey.trim().replace(/['"]/g, '');
+export const isConfigured = url.startsWith('http') && key.length > 20;
 
-export const isConfigured = 
-  supabaseUrl.startsWith('http') && 
-  supabaseAnonKey.length > 30; // Chaves anon são geralmente bem longas
+// Configurações de fallback seguras
+const finalUrl = isConfigured ? url : 'https://missing.supabase.co';
+const finalKey = isConfigured ? key : 'missing-key';
 
-// Expõe para o componente Auth conseguir mostrar o que está acontecendo
+// Expõe diagnóstico para a UI
 (window as any).__SUPABASE_DIAGNOSTIC__ = {
-  urlFound: !!supabaseUrl,
-  urlStart: supabaseUrl ? supabaseUrl.substring(0, 10) + '...' : 'nulo',
-  keyFound: !!supabaseAnonKey,
-  keyLength: supabaseAnonKey.length,
+  urlFound: !!url,
+  keyFound: !!key,
   isConfigured
 };
-
-const finalUrl = isConfigured ? supabaseUrl : 'https://placeholder.supabase.co';
-const finalKey = isConfigured ? supabaseAnonKey : 'placeholder-key';
 
 export const supabase = createClient(finalUrl, finalKey);

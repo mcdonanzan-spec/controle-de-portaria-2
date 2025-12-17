@@ -7,18 +7,35 @@
     <title>Controle de Portaria de Obras</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
+      // Captura erros antes mesmo do React carregar
+      window.onerror = function(msg, url, lineNo, columnNo, error) {
+        const root = document.getElementById('root');
+        if (root) {
+          root.innerHTML = `
+            <div style="padding: 40px; color: #E74C3C; background: #1E2124; height: 100vh; font-family: sans-serif;">
+              <h1 style="font-size: 24px;">⚠️ Erro de Carregamento</h1>
+              <p style="color: white;">Ocorreu um erro ao iniciar o aplicativo:</p>
+              <pre style="background: #000; padding: 15px; border-radius: 8px; color: #2ECC71; overflow: auto;">${msg}</pre>
+              <p style="color: #A0A2A5; font-size: 12px;">Linha: ${lineNo} | Coluna: ${columnNo}</p>
+              <button onclick="window.location.reload()" style="background: #F39C12; color: #000; border: none; padding: 12px 24px; border-radius: 6px; font-weight: bold; cursor: pointer; margin-top: 20px;">Tentar Novamente</button>
+            </div>
+          `;
+        }
+        return false;
+      };
+
       tailwind.config = {
         theme: {
           extend: {
             colors: {
-              'brand-charcoal': '#1E2124', // Main background
-              'brand-lead': '#282B30',    // Card backgrounds, secondary elements
-              'brand-steel': '#36393F',   // Borders, inputs, lighter elements
-              'brand-slate': '#40444B',   // Darker gray for accents
-              'brand-amber': '#F39C12',   // Primary accent color (replaces yellow)
-              'brand-blue': '#3498DB',    // Secondary accent
-              'brand-text': '#DCDDDE',    // Main text color
-              'brand-text-muted': '#A0A2A5', // Muted text
+              'brand-charcoal': '#1E2124',
+              'brand-lead': '#282B30',
+              'brand-steel': '#36393F',
+              'brand-slate': '#40444B',
+              'brand-amber': '#F39C12',
+              'brand-blue': '#3498DB',
+              'brand-text': '#DCDDDE',
+              'brand-text-muted': '#A0A2A5',
               'feedback-success': '#2ECC71',
               'feedback-error': '#E74C3C',
             },
@@ -29,19 +46,23 @@
         },
       }
     </script>
-  <script type="importmap">
-{
-  "imports": {
-    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
-    "react/": "https://aistudiocdn.com/react@^19.2.0/",
-    "react": "https://aistudiocdn.com/react@^19.2.0",
-    "@supabase/supabase-js": "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.1/+esm"
-  }
-}
-</script>
-</head>
+    <script type="importmap">
+    {
+      "imports": {
+        "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+        "react/": "https://aistudiocdn.com/react@^19.2.0/",
+        "react": "https://aistudiocdn.com/react@^19.2.0",
+        "@supabase/supabase-js": "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.1/+esm"
+      }
+    }
+    </script>
+  </head>
   <body class="bg-brand-charcoal text-brand-text">
-    <div id="root" class="flex flex-col h-screen"></div>
-    <script type="module" src="/index.tsx"></script>
+    <div id="root" class="flex flex-col h-screen">
+        <div class="flex items-center justify-center h-full">
+            <div class="text-brand-amber animate-spin rounded-full h-12 w-12 border-b-2 border-brand-amber"></div>
+        </div>
+    </div>
+    <script type="module" src="./index.tsx"></script>
   </body>
 </html>

@@ -1,18 +1,18 @@
 
 import React, { useState, useCallback, useEffect } from 'react';
-import { Visitor, Delivery } from './types';
-import { supabase } from './lib/supabase';
+import { Visitor, Delivery } from './types.ts';
+import { supabase } from './lib/supabase.ts';
 
-import BottomNav from './components/BottomNav';
-import DeliveriesView from './components/views/DeliveriesView';
-import VisitorsView from './components/views/VisitorsView';
-import ExitView from './components/views/ExitView';
-import ReportsView from './components/views/ReportsView';
-import DashboardView from './components/views/DashboardView';
-import Auth from './components/Auth';
-import { BuildingIcon, LogoutIcon } from './components/icons';
-import Toast from './components/Toast';
-import ConfirmationModal from './components/ConfirmationModal';
+import BottomNav from './components/BottomNav.tsx';
+import DeliveriesView from './components/views/DeliveriesView.tsx';
+import VisitorsView from './components/views/VisitorsView.tsx';
+import ExitView from './components/views/ExitView.tsx';
+import ReportsView from './components/views/ReportsView.tsx';
+import DashboardView from './components/views/DashboardView.tsx';
+import Auth from './components/Auth.tsx';
+import { BuildingIcon, LogoutIcon } from './components/icons.tsx';
+import Toast from './components/Toast.tsx';
+import ConfirmationModal from './components/ConfirmationModal.tsx';
 
 const App: React.FC = () => {
   const [session, setSession] = useState<any>(null);
@@ -28,7 +28,6 @@ const App: React.FC = () => {
     onConfirm: () => {},
   });
 
-  // Supabase Auth Listener
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
@@ -42,11 +41,9 @@ const App: React.FC = () => {
     return () => subscription.unsubscribe();
   }, []);
 
-  // Fetch Data from Supabase
   const fetchData = useCallback(async () => {
     if (!session) return;
     
-    // Fetch Visitors
     const { data: vData, error: vError } = await supabase
       .from('visitors')
       .select('*')
@@ -62,7 +59,6 @@ const App: React.FC = () => {
       })));
     }
 
-    // Fetch Deliveries
     const { data: dData, error: dError } = await supabase
       .from('deliveries')
       .select('*')
@@ -84,41 +80,27 @@ const App: React.FC = () => {
   }, [session]);
 
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+    if (session) fetchData();
+  }, [session, fetchData]);
   
   const showToast = (message: string) => {
     setToast({ message, show: true });
   };
   
-  const hideConfirmation = () => {
-    setConfirmationModal({ isOpen: false, title: '', message: '', onConfirm: () => {} });
-  };
-  
-  const showConfirmation = (title: string, message: string, onConfirm: () => void) => {
+  const handleLogout = async () => {
     setConfirmationModal({
         isOpen: true,
-        title,
-        message,
-        onConfirm: () => {
-            onConfirm();
-            hideConfirmation();
+        title: 'Sair do Sistema',
+        message: 'Deseja realmente encerrar sua sessão?',
+        onConfirm: async () => {
+            await supabase.auth.signOut();
+            setConfirmationModal(prev => ({ ...prev, isOpen: false }));
         }
     });
   };
 
-  const handleLogout = async () => {
-    showConfirmation(
-      'Encerrar Sessão',
-      'Deseja realmente sair do sistema de controle?',
-      async () => {
-        await supabase.auth.signOut();
-      }
-    );
-  };
-
   const addVisitor = useCallback(async (visitorData: Omit<Visitor, 'id' | 'entryTime' | 'exitTime'>) => {
-    const { data, error } = await supabase.from('visitors').insert([{
+    const { error } = await supabase.from('visitors').insert([{
       name: visitorData.name,
       document: visitorData.document,
       company: visitorData.company,
@@ -132,19 +114,16 @@ const App: React.FC = () => {
       vehicle_color: visitorData.vehicle.color,
       vehicle_plate: visitorData.vehicle.plate,
       user_id: session?.user?.id
-    }]).select();
+    }]);
 
     if (!error) {
       fetchData();
-      showToast('Visitante registrado no banco de dados!');
-    } else {
-      console.error(error);
-      alert('Erro ao salvar no banco de dados. Verifique sua conexão.');
+      showToast('Visitante registrado!');
     }
   }, [session, fetchData]);
 
   const addDelivery = useCallback(async (deliveryData: Omit<Delivery, 'id' | 'entryTime' | 'exitTime'>) => {
-    const { data, error } = await supabase.from('deliveries').insert([{
+    const { error } = await supabase.from('deliveries').insert([{
       supplier: deliveryData.supplier,
       driver_name: deliveryData.driverName,
       driver_document: deliveryData.driverDocument,
@@ -153,14 +132,11 @@ const App: React.FC = () => {
       invoice_photo: deliveryData.invoicePhoto,
       plate_photo: deliveryData.platePhoto,
       user_id: session?.user?.id
-    }]).select();
+    }]);
 
     if (!error) {
       fetchData();
-      showToast('Entrega registrada no banco de dados!');
-    } else {
-      console.error(error);
-      alert('Erro ao salvar no banco de dados.');
+      showToast('Entrega registrada!');
     }
   }, [session, fetchData]);
 
@@ -173,22 +149,14 @@ const App: React.FC = () => {
 
     if (!error) {
       fetchData();
-      showToast("Saída registrada com sucesso!");
+      showToast("Saída registrada!");
     }
   }, [fetchData]);
-  
-  const handleMarkExitRequest = (type: 'visitor' | 'delivery', id: number, name: string) => {
-    showConfirmation(
-        `Confirmar Saída`,
-        `Deseja realmente registrar a saída de ${name}?`,
-        () => markExit(type, id)
-    );
-  };
 
   if (loading) {
     return (
       <div className="h-screen w-full flex items-center justify-center bg-brand-charcoal">
-        <div className="text-brand-amber animate-pulse font-bold tracking-widest uppercase">Carregando Sistema...</div>
+        <div className="text-brand-amber animate-pulse font-bold">CARREGANDO...</div>
       </div>
     );
   }
@@ -197,55 +165,34 @@ const App: React.FC = () => {
     return <Auth />;
   }
 
-  const renderContent = () => {
-    switch (activeTab) {
-      case 'Painel':
-        return <DashboardView visitors={visitors} deliveries={deliveries} onMarkExitRequest={handleMarkExitRequest} />;
-      case 'Entregas':
-        return <DeliveriesView addDelivery={addDelivery} showToast={showToast} />;
-      case 'Visitantes':
-        return <VisitorsView addVisitor={addVisitor} showToast={showToast} />;
-      case 'Saida':
-        return <ExitView visitors={visitors} deliveries={deliveries} onMarkExitRequest={handleMarkExitRequest} />;
-      case 'Relatorios':
-        return <ReportsView visitors={visitors} deliveries={deliveries} />;
-      default:
-        return <DashboardView visitors={visitors} deliveries={deliveries} onMarkExitRequest={handleMarkExitRequest} />;
-    }
-  };
-
   return (
-    <>
+    <div className="flex flex-col h-screen overflow-hidden">
       <Toast message={toast.message} show={toast.show} onClose={() => setToast({ message: '', show: false })} />
       <ConfirmationModal
         isOpen={confirmationModal.isOpen}
-        onClose={hideConfirmation}
+        onClose={() => setConfirmationModal(prev => ({ ...prev, isOpen: false }))}
         onConfirm={confirmationModal.onConfirm}
         title={confirmationModal.title}
         message={confirmationModal.message}
       />
-      <header className="bg-brand-charcoal shadow-lg p-4 flex justify-between items-center relative border-b border-brand-steel">
+      <header className="bg-brand-charcoal shadow-lg p-4 flex justify-between items-center border-b border-brand-steel flex-shrink-0">
         <div className="flex items-center">
             <BuildingIcon className="h-8 w-8 mr-3 text-brand-amber" />
-            <h1 className="text-xl font-bold text-brand-text hidden sm:block">Controle de Portaria</h1>
-            <h1 className="text-xl font-bold text-brand-text sm:hidden">Portaria</h1>
+            <h1 className="text-xl font-bold text-brand-text">Portaria de Obras</h1>
         </div>
-        <button 
-          onClick={handleLogout}
-          className="p-2 text-brand-text-muted hover:text-feedback-error transition-colors flex items-center gap-2"
-          title="Sair"
-        >
-          <span className="text-xs font-bold uppercase hidden sm:inline">Sair</span>
-          <LogoutIcon className="h-6 w-6" />
-        </button>
+        <button onClick={handleLogout} className="p-2 text-brand-text-muted hover:text-feedback-error"><LogoutIcon className="h-6 w-6" /></button>
       </header>
 
       <main className="flex-grow overflow-y-auto pb-24 bg-brand-charcoal">
-        {renderContent()}
+        {activeTab === 'Painel' && <DashboardView visitors={visitors} deliveries={deliveries} onMarkExitRequest={(t, i, n) => markExit(t, i)} />}
+        {activeTab === 'Entregas' && <DeliveriesView addDelivery={addDelivery} showToast={showToast} />}
+        {activeTab === 'Visitantes' && <VisitorsView addVisitor={addVisitor} showToast={showToast} />}
+        {activeTab === 'Saida' && <ExitView visitors={visitors} deliveries={deliveries} onMarkExitRequest={(t, i, n) => markExit(t, i)} />}
+        {activeTab === 'Relatorios' && <ReportsView visitors={visitors} deliveries={deliveries} />}
       </main>
 
       <BottomNav activeTab={activeTab} setActiveTab={setActiveTab} />
-    </>
+    </div>
   );
 };
 
