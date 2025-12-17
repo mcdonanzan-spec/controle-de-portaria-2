@@ -1,14 +1,21 @@
 
 import { createClient } from '@supabase/supabase-js';
 
-// Na Vercel, as variáveis devem ser definidas exatamente com esses nomes
-// Se estiver usando Vite, elas precisariam do prefixo VITE_, 
-// mas aqui usamos process.env conforme o ambiente configurado.
-const supabaseUrl = process.env.SUPABASE_URL || '';
-const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || '';
+// Função segura para pegar variáveis de ambiente sem travar o app
+const getEnv = (key: string): string => {
+  try {
+    return (typeof process !== 'undefined' && process.env && process.env[key]) || '';
+  } catch (e) {
+    return '';
+  }
+};
 
-if (!supabaseUrl || supabaseUrl.includes('placeholder')) {
-  console.warn('Configuração do Supabase ausente. Verifique as variáveis de ambiente na Vercel.');
-}
+const supabaseUrl = getEnv('SUPABASE_URL');
+const supabaseAnonKey = getEnv('SUPABASE_ANON_KEY');
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+// Se as chaves estiverem vazias, o cliente será criado com placeholders
+// O componente Auth.tsx já está preparado para mostrar o erro amigável "Failed to fetch"
+export const supabase = createClient(
+  supabaseUrl || 'https://placeholder.supabase.co',
+  supabaseAnonKey || 'placeholder'
+);
