@@ -1,53 +1,58 @@
 
 import { createClient } from '@supabase/supabase-js';
 
-// Função ultra-robusta para capturar variáveis de qualquer lugar
-const tryGet = (key: string): string => {
-  try {
-    // 1. Tenta LocalStorage (prioridade para correções manuais)
-    const saved = localStorage.getItem(`__config_${key}`);
-    if (saved) return saved.trim();
+/** 
+ * 🛠️ CONFIGURAÇÃO DE ACESSO (PARA FUNCIONAR EM TODOS OS CELULARES)
+ * ----------------------------------------------------------------
+ * Cole abaixo os valores que você pegou no painel do Supabase.
+ * Isso fará com que o app funcione automaticamente em qualquer aparelho.
+ */
+const CONFIG = {
+  // Ex: 'https://xyzcompany.supabase.co'
+  URL: 'https://fjpeafeudzyfgnghshps.supabase.co', 
+  
+  // Ex: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'
+  ANON_KEY: 'SUA_CHAVE_ANON_AQUI' 
+};
 
-    // 2. Tenta process.env (Vercel/Node)
+// --- Não altere nada abaixo desta linha ---
+
+const tryGetEnv = (key: string): string => {
+  try {
     // @ts-ignore
     const env = (typeof process !== 'undefined' && process.env ? process.env[key] : null) || 
                 // @ts-ignore
-                (typeof import.meta !== 'undefined' && import.meta.env ? import.meta.env[key] : null) ||
-                // @ts-ignore
-                (typeof window !== 'undefined' ? window[key] : null);
-    
+                (typeof import.meta !== 'undefined' && import.meta.env ? import.meta.env[key] : null);
     return env ? String(env).trim().replace(/['"]/g, '') : '';
-  } catch (e) {
-    return '';
-  }
+  } catch { return ''; }
 };
 
-// Busca URL e Key usando múltiplos aliases comuns
-const url = tryGet('SUPABASE_URL') || tryGet('URL_SUPABASE') || tryGet('VITE_SUPABASE_URL');
-const key = tryGet('SUPABASE_ANON_KEY') || tryGet('ANON_KEY_SUPABASE') || tryGet('VITE_SUPABASE_ANON_KEY');
+// Prioridade 1: Código (Hardcoded) | Prioridade 2: LocalStorage | Prioridade 3: Variáveis de Ambiente
+const finalUrl = CONFIG.URL || localStorage.getItem('__config_SUPABASE_URL') || tryGetEnv('SUPABASE_URL') || tryGetEnv('URL_SUPABASE');
+const finalKey = CONFIG.ANON_KEY || localStorage.getItem('__config_SUPABASE_ANON_KEY') || tryGetEnv('SUPABASE_ANON_KEY') || tryGetEnv('ANON_KEY_SUPABASE');
 
-// Validação rigorosa
-export const isConfigured = url.startsWith('http') && key.length > 20;
+export const isConfigured = !!(finalUrl && finalUrl.startsWith('http') && finalKey && finalKey.length > 20);
 
-// Configuração de fallback para evitar crash na inicialização
-const finalUrl = isConfigured ? url : 'https://waiting-for-config.supabase.co';
-const finalKey = isConfigured ? key : 'waiting-for-config-key';
+// Diagnóstico para o desenvolvedor no console do navegador
+if (!isConfigured) {
+  console.warn("⚠️ Supabase não configurado. Adicione as chaves em lib/supabase.ts");
+}
 
-// Expõe diagnóstico global para o componente Auth
+export const supabase = createClient(
+  isConfigured ? finalUrl : 'https://waiting.supabase.co',
+  isConfigured ? finalKey : 'waiting-key'
+);
+
+// Expõe para o sistema de emergência caso precise resetar
 (window as any).__SUPABASE_DIAGNOSTIC__ = {
-  urlFound: !!url && url !== 'https://waiting-for-config.supabase.co',
-  keyFound: !!key && key !== 'waiting-for-config-key',
   isConfigured,
-  saveConfig: (newUrl: string, newKey: string) => {
-    localStorage.setItem('__config_SUPABASE_URL', newUrl);
-    localStorage.setItem('__config_SUPABASE_ANON_KEY', newKey);
+  saveConfig: (u: string, k: string) => {
+    localStorage.setItem('__config_SUPABASE_URL', u);
+    localStorage.setItem('__config_SUPABASE_ANON_KEY', k);
     window.location.reload();
   },
   resetConfig: () => {
-    localStorage.removeItem('__config_SUPABASE_URL');
-    localStorage.removeItem('__config_SUPABASE_ANON_KEY');
+    localStorage.clear();
     window.location.reload();
   }
 };
-
-export const supabase = createClient(finalUrl, finalKey);
