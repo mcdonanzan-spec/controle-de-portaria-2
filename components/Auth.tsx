@@ -23,41 +23,35 @@ const Auth: React.FC = () => {
 
         try {
             if (isSignUp) {
-                const { error } = await supabase.auth.signUp({ 
-                    email, 
-                    password,
-                    options: {
-                        data: {
-                            full_name: email.split('@')[0],
-                        }
-                    }
-                });
+                const { data, error } = await supabase.auth.signUp({ email, password });
                 if (error) throw error;
-                setMessage({ 
-                    text: 'Cadastro realizado! Verifique sua caixa de entrada (e SPAM) para confirmar o e-mail antes de tentar entrar.', 
-                    type: 'success' 
-                });
+
+                if (data.user) {
+                    await supabase.from('perfis').insert([{
+                        id: data.user.id,
+                        nome_completo: email.split('@')[0].toUpperCase(),
+                        cargo: 'porteiro'
+                    }]);
+                }
+
+                setMessage({ text: 'Cadastro realizado! Verifique seu e-mail.', type: 'success' });
             } else {
-                const { error } = await supabase.auth.signInWithPassword({ email, password });
+                const { data, error } = await supabase.auth.signInWithPassword({ email, password });
                 if (error) throw error;
+
+                if (data.user) {
+                    const { data: profile } = await supabase.from('perfis').select('id').eq('id', data.user.id).single();
+                    if (!profile) {
+                        await supabase.from('perfis').insert([{
+                            id: data.user.id,
+                            nome_completo: email.split('@')[0].toUpperCase(),
+                            cargo: 'porteiro'
+                        }]);
+                    }
+                }
             }
         } catch (error: any) {
-            console.error("Erro de Autenticação:", error);
-            
-            let errorMsg = error.message || 'Erro inesperado';
-            
-            if (errorMsg === 'Failed to fetch') {
-                setMessage({ 
-                    text: '⚠️ SEM CONEXÃO: Ocorreu um erro ao tentar falar com o servidor do Supabase. Verifique se o projeto não foi pausado no painel da Supabase.', 
-                    type: 'error' 
-                });
-            } else if (errorMsg.includes('Email not confirmed')) {
-                setMessage({ text: 'E-mail não confirmado. Por favor, valide o link enviado para o seu e-mail.', type: 'error' });
-            } else if (errorMsg.includes('invalid claim')) {
-                setMessage({ text: 'Erro nas credenciais de conexão. Verifique as chaves do projeto.', type: 'error' });
-            } else {
-                setMessage({ text: errorMsg, type: 'error' });
-            }
+            setMessage({ text: error.message || 'Erro inesperado', type: 'error' });
         } finally {
             setLoading(false);
         }
@@ -69,77 +63,46 @@ const Auth: React.FC = () => {
                 <div className="bg-brand-amber p-8 text-center">
                     <BuildingIcon className="w-12 h-12 mx-auto text-brand-charcoal mb-2" />
                     <h1 className="text-2xl font-black text-brand-charcoal uppercase tracking-tighter">Canteiro Seguro</h1>
-                    <p className="text-xs text-brand-charcoal/70 font-bold uppercase tracking-widest">Controle de Portaria v2.0</p>
+                    <p className="text-[10px] text-brand-charcoal/70 font-bold uppercase tracking-widest">Gestão de Acesso Multi-Obras</p>
                 </div>
                 
                 <div className="p-8">
                     <form onSubmit={handleAuth} className="space-y-5">
                         {message && (
-                            <div className={`p-4 rounded-xl text-[11px] font-bold border leading-relaxed ${
+                            <div className={`p-4 rounded-xl text-[10px] font-bold border ${
                                 message.type === 'error' ? 'bg-red-500/10 text-red-400 border-red-500/30' : 
-                                message.type === 'success' ? 'bg-green-500/10 text-green-400 border-green-500/30' :
-                                'bg-yellow-500/10 text-yellow-400 border-yellow-500/30'
+                                'bg-green-500/10 text-green-400 border-green-500/30'
                             }`}>
                                 {message.text}
                             </div>
                         )}
 
                         <div className="space-y-1">
-                            <label className="text-[10px] font-black text-brand-text-muted uppercase ml-1">E-mail Corporativo</label>
+                            <label className="text-[10px] font-black text-brand-text-muted uppercase ml-1">E-mail</label>
                             <div className="relative">
-                                <UserIcon className="absolute left-3 top-3 h-4 w-4 text-brand-text-muted" />
-                                <input 
-                                    type="email" 
-                                    value={email} 
-                                    onChange={(e) => setEmail(e.target.value)} 
-                                    className="w-full bg-brand-steel border-brand-slate border-2 rounded-xl py-3 pl-10 pr-3 text-brand-text outline-none focus:border-brand-amber transition-all" 
-                                    placeholder="seu-email@dominio.com"
-                                    required 
-                                />
+                                <UserIcon className="absolute left-3 top-3.5 h-4 w-4 text-brand-text-muted" />
+                                <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full bg-brand-steel border-brand-slate border-2 rounded-xl py-3 pl-10 pr-3 text-brand-text outline-none focus:border-brand-amber transition-all text-xs" placeholder="seu-email@dominio.com" required />
                             </div>
                         </div>
 
                         <div className="space-y-1">
-                            <label className="text-[10px] font-black text-brand-text-muted uppercase ml-1">Senha de Acesso</label>
+                            <label className="text-[10px] font-black text-brand-text-muted uppercase ml-1">Senha</label>
                             <div className="relative">
-                                <LockClosedIcon className="absolute left-3 top-3 h-4 w-4 text-brand-text-muted" />
-                                <input 
-                                    type="password" 
-                                    value={password} 
-                                    onChange={(e) => setPassword(e.target.value)} 
-                                    className="w-full bg-brand-steel border-brand-slate border-2 rounded-xl py-3 pl-10 pr-3 text-brand-text outline-none focus:border-brand-amber transition-all" 
-                                    placeholder="••••••••"
-                                    required 
-                                />
+                                <LockClosedIcon className="absolute left-3 top-3.5 h-4 w-4 text-brand-text-muted" />
+                                <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full bg-brand-steel border-brand-slate border-2 rounded-xl py-3 pl-10 pr-3 text-brand-text outline-none focus:border-brand-amber transition-all text-xs" placeholder="••••••••" required />
                             </div>
                         </div>
 
-                        <button 
-                            type="submit" 
-                            disabled={loading} 
-                            className="w-full bg-brand-amber hover:bg-white text-brand-charcoal font-black py-4 rounded-xl transition-all active:scale-[0.98] shadow-lg uppercase text-sm tracking-wider disabled:opacity-50"
-                        >
-                            {loading ? 'Processando...' : (isSignUp ? 'Finalizar Cadastro' : 'Entrar no Sistema')}
+                        <button type="submit" disabled={loading} className="w-full bg-brand-amber text-brand-charcoal font-black py-4 rounded-xl transition-all active:scale-[0.98] shadow-lg uppercase text-xs tracking-widest disabled:opacity-50">
+                            {loading ? 'Processando...' : (isSignUp ? 'Criar Conta' : 'Entrar no Sistema')}
                         </button>
 
-                        <button 
-                            type="button" 
-                            onClick={() => { setIsSignUp(!isSignUp); setMessage(null); }} 
-                            className="w-full text-brand-text-muted text-[10px] font-bold uppercase tracking-widest hover:text-brand-amber transition-colors mt-2"
-                        >
-                            {isSignUp ? 'Já tenho acesso' : 'Primeiro acesso? Solicitar cadastro'}
+                        <button type="button" onClick={() => setIsSignUp(!isSignUp)} className="w-full text-brand-text-muted text-[9px] font-bold uppercase tracking-widest hover:text-brand-amber transition-colors">
+                            {isSignUp ? 'Já tenho conta' : 'Novo por aqui? Cadastre-se'}
                         </button>
                     </form>
                 </div>
-                
-                <div className="bg-black/20 p-3 text-center border-t border-brand-steel">
-                   <p className="text-[9px] text-brand-text-muted uppercase tracking-widest leading-relaxed">
-                     ID do Projeto: <span className="text-brand-amber font-bold">fjpeafeudzyfgnghxafa</span><br/>
-                     Status: <span className="text-feedback-success">Conexão Estabelecida</span>
-                   </p>
-                </div>
             </div>
-            <p className="fixed bottom-4 text-[9px] text-brand-text-muted/30 uppercase font-bold">Canteiro Seguro © 2024 - Sistema de Segurança Patrimonial</p>
         </div>
     );
 };

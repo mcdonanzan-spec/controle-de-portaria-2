@@ -1,6 +1,6 @@
 
 import React, { useState, useCallback, useEffect } from 'react';
-import { Visitor, Delivery, UserProfile, UserRole } from './types.ts';
+import { Visitor, Delivery, UserProfile } from './types.ts';
 import { supabase } from './lib/supabase.ts';
 
 import BottomNav from './components/BottomNav.tsx';
@@ -31,28 +31,27 @@ const App: React.FC = () => {
     onConfirm: () => {},
   });
 
-  // Buscar perfil do usuário após o login
   const fetchProfile = async (userId: string) => {
-    const { data, error } = await supabase
-      .from('perfis')
-      .select('*, obras(nome)')
-      .eq('id', userId)
-      .single();
+    try {
+      const { data, error } = await supabase
+        .from('perfis')
+        .select('*')
+        .eq('id', userId)
+        .single();
 
-    if (!error && data) {
-      setProfile({
-        id: data.id,
-        fullName: data.nome_completo,
-        role: data.cargo,
-        workId: data.obra_id
-      });
-    } else {
-      // Se não houver perfil, assumimos porteiro sem obra até ser configurado pelo admin
-      setProfile({
-        id: userId,
-        fullName: 'Novo Usuário',
-        role: 'porteiro'
-      });
+      if (!error && data) {
+        setProfile({
+          id: data.id,
+          fullName: data.nome_completo,
+          role: data.cargo,
+          workId: data.obra_id
+        });
+      } else {
+        // Fallback para novo usuário sem perfil ainda
+        setProfile({ id: userId, fullName: 'Usuário', role: 'porteiro' });
+      }
+    } catch (err) {
+      console.error("Erro perfil:", err);
     }
   };
 
@@ -66,7 +65,11 @@ const App: React.FC = () => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
       if (session) fetchProfile(session.user.id);
-      else setProfile(null);
+      else {
+        setProfile(null);
+        setVisitors([]);
+        setDeliveries([]);
+      }
     });
 
     return () => subscription.unsubscribe();
@@ -76,13 +79,18 @@ const App: React.FC = () => {
     if (!session || !profile) return;
     
     try {
-      // Query base filtrada por obra (a menos que seja admin global)
       let vQuery = supabase.from('visitors').select('*');
       let dQuery = supabase.from('deliveries').select('*');
 
+      // Regra de Ouro: Admin vê tudo, Porteiro/Gestor vê apenas sua obra
       if (profile.role !== 'admin' && profile.workId) {
         vQuery = vQuery.eq('obra_id', profile.workId);
         dQuery = dQuery.eq('obra_id', profile.workId);
+      } else if (profile.role !== 'admin' && !profile.workId) {
+        // Usuário sem obra vinculada não vê nada por segurança
+        setVisitors([]);
+        setDeliveries([]);
+        return;
       }
 
       const { data: vData } = await vQuery.order('entry_time', { ascending: false });
@@ -142,7 +150,7 @@ const App: React.FC = () => {
 
   const addVisitor = useCallback(async (visitorData: Omit<Visitor, 'id' | 'entryTime' | 'exitTime' | 'workId'>): Promise<boolean> => {
     if (!profile?.workId && profile?.role !== 'admin') {
-      showToast('Usuário sem obra vinculada. Contate o administrador.', 'error');
+      showToast('Usuário sem obra vinculada. Contate o ADM.', 'error');
       return false;
     }
 
@@ -164,12 +172,12 @@ const App: React.FC = () => {
     }]);
 
     if (error) {
-      showToast('Erro ao salvar visitante: ' + error.message, 'error');
+      showToast('Erro: ' + error.message, 'error');
       return false;
     }
 
     await fetchData();
-    showToast('Visitante registrado com sucesso!');
+    showToast('Visitante registrado!');
     return true;
   }, [session, profile, fetchData]);
 
@@ -192,12 +200,12 @@ const App: React.FC = () => {
     }]);
 
     if (error) {
-      showToast('Erro ao salvar entrega: ' + error.message, 'error');
+      showToast('Erro: ' + error.message, 'error');
       return false;
     }
 
     await fetchData();
-    showToast('Entrega registrada com sucesso!');
+    showToast('Entrega registrada!');
     return true;
   }, [session, profile, fetchData]);
 
@@ -209,7 +217,7 @@ const App: React.FC = () => {
       .eq('id', id);
 
     if (error) {
-      showToast('Erro ao registrar saída: ' + error.message, 'error');
+      showToast('Erro na saída: ' + error.message, 'error');
     } else {
       await fetchData();
       showToast("Saída registrada!");
@@ -224,7 +232,7 @@ const App: React.FC = () => {
   if (loading) {
     return (
       <div className="h-screen w-full flex items-center justify-center bg-brand-charcoal">
-        <div className="text-brand-amber animate-pulse font-bold tracking-widest text-xs uppercase">Sincronizando Perfil...</div>
+        <div className="text-brand-amber animate-pulse font-black text-[10px] uppercase tracking-widest">Sincronizando Sistema...</div>
       </div>
     );
   }
@@ -233,10 +241,10 @@ const App: React.FC = () => {
     return <Auth />;
   }
 
-  // Filtrar abas permitidas por cargo
-  const canSeeOperational = profile?.role === 'admin' || profile?.role === 'porteiro';
-  const canSeeReports = profile?.role === 'admin' || profile?.role === 'gestor';
-  const isAdmin = profile?.role === 'admin';
+  const role = profile?.role || 'porteiro';
+  const canOperate = role === 'porteiro' || role === 'admin';
+  const canReport = role === 'gestor' || role === 'admin';
+  const isAdmin = role === 'admin';
 
   return (
     <div className="flex flex-col h-screen overflow-hidden font-sans">
@@ -254,9 +262,9 @@ const App: React.FC = () => {
             <div className="flex flex-col">
               <h1 className="text-lg font-black text-brand-text uppercase leading-none">Canteiro Seguro</h1>
               <div className="flex items-center gap-2 mt-1">
-                <span className="text-[8px] bg-brand-amber/20 text-brand-amber px-1.5 py-0.5 rounded font-black uppercase tracking-widest">{profile?.role}</span>
-                <span className="text-[9px] text-brand-text-muted font-bold uppercase truncate max-w-[120px]">
-                  {profile?.workId ? `Obra ID: ${profile.workId}` : 'Aguardando Vínculo'}
+                <span className="text-[7px] bg-brand-amber/20 text-brand-amber px-1 py-0.5 rounded font-black uppercase tracking-widest">{role}</span>
+                <span className="text-[8px] text-brand-text-muted font-bold uppercase truncate max-w-[150px]">
+                  {profile?.workId ? `Unidade ID: ${profile.workId}` : 'Aguardando Alocação'}
                 </span>
               </div>
             </div>
@@ -273,10 +281,10 @@ const App: React.FC = () => {
             onNavigateToReports={navigateToReports}
           />
         )}
-        {activeTab === 'Entregas' && canSeeOperational && <DeliveriesView addDelivery={addDelivery} />}
-        {activeTab === 'Visitantes' && canSeeOperational && <VisitorsView addVisitor={addVisitor} />}
-        {activeTab === 'Saida' && canSeeOperational && <ExitView visitors={visitors} deliveries={deliveries} onMarkExitRequest={(t, i) => markExit(t, i)} />}
-        {activeTab === 'Relatorios' && canSeeReports && (
+        {activeTab === 'Entregas' && canOperate && <DeliveriesView addDelivery={addDelivery} />}
+        {activeTab === 'Visitantes' && canOperate && <VisitorsView addVisitor={addVisitor} />}
+        {activeTab === 'Saida' && canOperate && <ExitView visitors={visitors} deliveries={deliveries} onMarkExitRequest={(t, i) => markExit(t, i)} />}
+        {activeTab === 'Relatorios' && canReport && (
           <ReportsView 
             visitors={visitors} 
             deliveries={deliveries} 
@@ -285,11 +293,11 @@ const App: React.FC = () => {
           />
         )}
         {activeTab === 'Gestao' && isAdmin && (
-          <AdminView onRefresh={() => fetchData()} />
+          <AdminView onRefresh={() => { fetchProfile(session.user.id); fetchData(); }} />
         )}
       </main>
 
-      <BottomNav activeTab={activeTab} setActiveTab={setActiveTab} userRole={profile?.role || 'porteiro'} />
+      <BottomNav activeTab={activeTab} setActiveTab={setActiveTab} userRole={role} />
     </div>
   );
 };
