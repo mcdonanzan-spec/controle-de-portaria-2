@@ -4,18 +4,17 @@ import { createClient } from '@supabase/supabase-js';
 /** 
  * 🛠️ CONFIGURAÇÃO DE ACESSO (PARA FUNCIONAR EM TODOS OS CELULARES)
  * ----------------------------------------------------------------
- * Cole abaixo os valores que você pegou no painel do Supabase.
- * Isso fará com que o app funcione automaticamente em qualquer aparelho.
+ * Sistema configurado com as chaves do projeto.
  */
 const CONFIG = {
-  // Ex: 'https://xyzcompany.supabase.co'
-  URL: 'https://fjpeafeudzyfgnghshps.supabase.co', 
+  // URL sincronizada com a chave fornecida (ID: fjpeafeudzyfgnghxfafa)
+  URL: 'https://fjpeafeudzyfgnghxfafa.supabase.co', 
   
-  // Ex: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'
-  ANON_KEY: 'SUA_CHAVE_ANON_AQUI' 
+  // Chave ANON de produção configurada
+  ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZqcGVhZmV1ZHp5ZmduZ2h4YWZhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjYwMDU1NjEsImV4cCI6MjA4MTU4MTU2MX0.Sqo6dIZL7XcrJ65pTZ7IKysWpA_zB4i3i6Sp4Wjj--M' 
 };
 
-// --- Não altere nada abaixo desta linha ---
+// --- O código abaixo gerencia a conexão automaticamente ---
 
 const tryGetEnv = (key: string): string => {
   try {
@@ -27,30 +26,18 @@ const tryGetEnv = (key: string): string => {
   } catch { return ''; }
 };
 
-// Prioridade 1: Código (Hardcoded) | Prioridade 2: LocalStorage | Prioridade 3: Variáveis de Ambiente
-const finalUrl = CONFIG.URL || localStorage.getItem('__config_SUPABASE_URL') || tryGetEnv('SUPABASE_URL') || tryGetEnv('URL_SUPABASE');
-const finalKey = CONFIG.ANON_KEY || localStorage.getItem('__config_SUPABASE_ANON_KEY') || tryGetEnv('SUPABASE_ANON_KEY') || tryGetEnv('ANON_KEY_SUPABASE');
+const finalUrl = CONFIG.URL || localStorage.getItem('__config_SUPABASE_URL') || tryGetEnv('SUPABASE_URL');
+const finalKey = CONFIG.ANON_KEY || localStorage.getItem('__config_SUPABASE_ANON_KEY') || tryGetEnv('SUPABASE_ANON_KEY');
 
-export const isConfigured = !!(finalUrl && finalUrl.startsWith('http') && finalKey && finalKey.length > 20);
-
-// Diagnóstico para o desenvolvedor no console do navegador
-if (!isConfigured) {
-  console.warn("⚠️ Supabase não configurado. Adicione as chaves em lib/supabase.ts");
-}
+export const isConfigured = !!(finalUrl && finalUrl.startsWith('http') && finalKey && finalKey.length > 20 && finalKey !== 'SUA_CHAVE_ANON_AQUI');
 
 export const supabase = createClient(
   isConfigured ? finalUrl : 'https://waiting.supabase.co',
   isConfigured ? finalKey : 'waiting-key'
 );
 
-// Expõe para o sistema de emergência caso precise resetar
 (window as any).__SUPABASE_DIAGNOSTIC__ = {
   isConfigured,
-  saveConfig: (u: string, k: string) => {
-    localStorage.setItem('__config_SUPABASE_URL', u);
-    localStorage.setItem('__config_SUPABASE_ANON_KEY', k);
-    window.location.reload();
-  },
   resetConfig: () => {
     localStorage.clear();
     window.location.reload();
