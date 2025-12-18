@@ -39,19 +39,21 @@ const App: React.FC = () => {
         .eq('id', userId)
         .single();
 
-      if (!error && data) {
+      if (error) {
+        console.error("Erro Perfil:", error.message);
+        setProfile({ id: userId, fullName: 'Usuário', role: 'porteiro' });
+        return;
+      }
+
+      if (data) {
         setProfile({
           id: data.id,
           fullName: data.nome_completo,
-          role: data.cargo,
+          role: data.cargo.toLowerCase().trim() as any,
           workId: data.obra_id
         });
-      } else {
-        // Se der erro ou não achar, criamos um perfil básico para não travar o app
-        setProfile({ id: userId, fullName: 'Usuário', role: 'porteiro' });
       }
     } catch (err) {
-      console.error("Erro ao carregar perfil:", err);
       setProfile({ id: userId, fullName: 'Usuário', role: 'porteiro' });
     }
   };
@@ -79,16 +81,16 @@ const App: React.FC = () => {
   const fetchData = useCallback(async () => {
     if (!session || !profile) return;
     
+    const isAdmin = profile.role === 'admin' || profile.role === 'administrador';
+    
     try {
       let vQuery = supabase.from('visitors').select('*');
       let dQuery = supabase.from('deliveries').select('*');
 
-      // REGRA DE ACESSO: Se for admin, vê tudo. Se for porteiro/gestor, só vê a obra dele.
-      if (profile.role !== 'admin' && profile.workId) {
+      if (!isAdmin && profile.workId) {
         vQuery = vQuery.eq('obra_id', profile.workId);
         dQuery = dQuery.eq('obra_id', profile.workId);
-      } else if (profile.role !== 'admin' && !profile.workId) {
-        // Segurança: Se não for admin e não tiver obra, não vê nada
+      } else if (!isAdmin && !profile.workId) {
         setVisitors([]);
         setDeliveries([]);
         return;
@@ -97,35 +99,10 @@ const App: React.FC = () => {
       const { data: vData } = await vQuery.order('entry_time', { ascending: false });
       const { data: dData } = await dQuery.order('entry_time', { ascending: false });
       
-      if (vData) {
-        setVisitors(vData.map(v => ({
-          ...v,
-          workId: v.obra_id,
-          entryTime: new Date(v.entry_time),
-          exitTime: v.exit_time ? new Date(v.exit_time) : undefined,
-          epi: { helmet: v.helmet, boots: v.boots, glasses: v.glasses },
-          vehicle: { model: v.vehicle_model, color: v.vehicle_color, plate: v.vehicle_plate },
-          visitReason: v.visit_reason,
-          personVisited: v.person_visited
-        })));
-      }
-
-      if (dData) {
-        setDeliveries(dData.map(d => ({
-          ...d,
-          workId: d.obra_id,
-          entryTime: new Date(d.entry_time),
-          exitTime: d.exit_time ? new Date(d.exit_time) : undefined,
-          invoicePhoto: d.invoice_photo,
-          platePhoto: d.plate_photo,
-          driverName: d.driver_name,
-          driverDocument: d.driver_document,
-          invoiceNumber: d.invoice_number,
-          licensePlate: d.license_plate
-        })));
-      }
+      if (vData) setVisitors(vData.map(v => ({ ...v, workId: v.obra_id, entryTime: new Date(v.entry_time), exitTime: v.exit_time ? new Date(v.exit_time) : undefined, epi: { helmet: v.helmet, boots: v.boots, glasses: v.glasses }, vehicle: { model: v.vehicle_model, color: v.vehicle_color, plate: v.vehicle_plate }, visitReason: v.visit_reason, personVisited: v.person_visited })));
+      if (dData) setDeliveries(dData.map(d => ({ ...d, workId: d.obra_id, entryTime: new Date(d.entry_time), exitTime: d.exit_time ? new Date(d.exit_time) : undefined, invoicePhoto: d.invoice_photo, platePhoto: d.plate_photo, driverName: d.driver_name, driverDocument: d.driver_document, invoiceNumber: d.invoice_number, licensePlate: d.license_plate })));
     } catch (err) {
-      console.error("Erro ao buscar registros:", err);
+      console.error("Erro fetchData:", err);
     }
   }, [session, profile]);
 
@@ -149,106 +126,17 @@ const App: React.FC = () => {
     });
   };
 
-  const addVisitor = useCallback(async (visitorData: Omit<Visitor, 'id' | 'entryTime' | 'exitTime' | 'workId'>): Promise<boolean> => {
-    if (!profile?.workId && profile?.role !== 'admin') {
-      showToast('Atenção: Você precisa estar vinculado a uma obra para registrar.', 'error');
-      return false;
-    }
-
-    const { error } = await supabase.from('visitors').insert([{
-      name: visitorData.name,
-      document: visitorData.document,
-      company: visitorData.company,
-      visit_reason: visitorData.visitReason,
-      person_visited: visitorData.personVisited,
-      photo: visitorData.photo,
-      helmet: visitorData.epi.helmet,
-      boots: visitorData.epi.boots,
-      glasses: visitorData.epi.glasses,
-      vehicle_model: visitorData.vehicle.model,
-      vehicle_color: visitorData.vehicle.color,
-      vehicle_plate: visitorData.vehicle.plate,
-      user_id: session?.user?.id,
-      obra_id: profile?.workId
-    }]);
-
-    if (error) {
-      showToast('Erro ao salvar: ' + error.message, 'error');
-      return false;
-    }
-
-    await fetchData();
-    showToast('Visitante cadastrado com sucesso!');
-    return true;
-  }, [session, profile, fetchData]);
-
-  const addDelivery = useCallback(async (deliveryData: Omit<Delivery, 'id' | 'entryTime' | 'exitTime' | 'workId'>): Promise<boolean> => {
-    if (!profile?.workId && profile?.role !== 'admin') {
-      showToast('Erro: Vínculo de obra não encontrado.', 'error');
-      return false;
-    }
-
-    const { error } = await supabase.from('deliveries').insert([{
-      supplier: deliveryData.supplier,
-      driver_name: deliveryData.driverName,
-      driver_document: deliveryData.driverDocument,
-      invoice_number: deliveryData.invoiceNumber,
-      license_plate: deliveryData.licensePlate,
-      invoice_photo: deliveryData.invoicePhoto,
-      plate_photo: deliveryData.platePhoto,
-      user_id: session?.user?.id,
-      obra_id: profile?.workId
-    }]);
-
-    if (error) {
-      showToast('Erro ao salvar entrega: ' + error.message, 'error');
-      return false;
-    }
-
-    await fetchData();
-    showToast('Entrega registrada com sucesso!');
-    return true;
-  }, [session, profile, fetchData]);
-
   const markExit = useCallback(async (type: 'visitor' | 'delivery', id: number) => {
     const table = type === 'visitor' ? 'visitors' : 'deliveries';
-    const { error } = await supabase
-      .from(table)
-      .update({ exit_time: new Date().toISOString() })
-      .eq('id', id);
-
-    if (error) {
-      showToast('Erro ao registrar saída: ' + error.message, 'error');
-    } else {
-      await fetchData();
-      showToast("Saída confirmada!");
-    }
+    const { error } = await supabase.from(table).update({ exit_time: new Date().toISOString() }).eq('id', id);
+    if (error) showToast(error.message, 'error'); else { await fetchData(); showToast("Saída registrada!"); }
   }, [fetchData]);
 
-  const navigateToReports = (type: 'visitors' | 'deliveries') => {
-    setReportType(type);
-    setActiveTab('Relatorios');
-  };
-
-  if (loading) {
-    return (
-      <div className="h-screen w-full flex items-center justify-center bg-brand-charcoal">
-          <div className="flex flex-col items-center gap-4">
-            <div className="text-brand-amber animate-spin rounded-full h-12 w-12 border-b-2 border-brand-amber"></div>
-            <div className="text-brand-text-muted font-black text-[10px] uppercase tracking-widest">Carregando Perfil...</div>
-          </div>
-      </div>
-    );
-  }
-
-  if (!session) {
-    return <Auth />;
-  }
+  if (loading) return <div className="h-screen w-full flex items-center justify-center bg-brand-charcoal"><div className="text-brand-amber animate-pulse font-black text-xs uppercase tracking-widest">Acessando Canteiro...</div></div>;
+  if (!session) return <Auth />;
 
   const currentRole = profile?.role || 'porteiro';
-  const isAdmin = currentRole === 'admin';
-  const isGestor = currentRole === 'gestor';
-  const isPorteiro = currentRole === 'porteiro';
+  const isAdmin = currentRole === 'admin' || currentRole === 'administrador';
 
   return (
     <div className="flex flex-col h-screen overflow-hidden font-sans">
@@ -260,15 +148,17 @@ const App: React.FC = () => {
         title={confirmationModal.title}
         message={confirmationModal.message}
       />
-      <header className="bg-brand-charcoal shadow-lg p-4 flex justify-between items-center border-b border-brand-steel flex-shrink-0 z-20">
+      <header className="bg-brand-charcoal shadow-lg p-4 flex justify-between items-center border-b border-brand-steel z-20">
         <div className="flex items-center">
             <BuildingIcon className="h-8 w-8 mr-3 text-brand-amber" />
             <div className="flex flex-col">
               <h1 className="text-lg font-black text-brand-text uppercase leading-none">Canteiro Seguro</h1>
               <div className="flex items-center gap-2 mt-1">
-                <span className="text-[7px] bg-brand-amber/20 text-brand-amber px-1.5 py-0.5 rounded font-black uppercase tracking-widest">{currentRole}</span>
-                <span className="text-[8px] text-brand-text-muted font-bold uppercase truncate max-w-[150px]">
-                  {profile?.workId ? `Obra ID: ${profile.workId}` : 'Aguardando Atribuição'}
+                <span className={`text-[7px] px-1.5 py-0.5 rounded font-black uppercase tracking-widest ${isAdmin ? 'bg-brand-amber text-brand-charcoal' : 'bg-brand-amber/20 text-brand-amber'}`}>
+                  {currentRole}
+                </span>
+                <span className="text-[8px] text-brand-text-muted font-bold uppercase">
+                  {profile?.workId ? `Obra ID: ${profile.workId}` : 'Gestão Central'}
                 </span>
               </div>
             </div>
@@ -277,31 +167,23 @@ const App: React.FC = () => {
       </header>
 
       <main className="flex-grow overflow-y-auto pb-24 bg-brand-charcoal">
-        {activeTab === 'Painel' && (
-          <DashboardView 
-            visitors={visitors} 
-            deliveries={deliveries} 
-            onMarkExitRequest={(t, i) => markExit(t, i)}
-            onNavigateToReports={navigateToReports}
-          />
-        )}
-        {activeTab === 'Entregas' && (isAdmin || isPorteiro) && <DeliveriesView addDelivery={addDelivery} />}
-        {activeTab === 'Visitantes' && (isAdmin || isPorteiro) && <VisitorsView addVisitor={addVisitor} />}
-        {activeTab === 'Saida' && (isAdmin || isPorteiro) && <ExitView visitors={visitors} deliveries={deliveries} onMarkExitRequest={(t, i) => markExit(t, i)} />}
-        {activeTab === 'Relatorios' && (isAdmin || isGestor) && (
-          <ReportsView 
-            visitors={visitors} 
-            deliveries={deliveries} 
-            activeReportType={reportType} 
-            onReportTypeChange={setReportType}
-          />
-        )}
-        {activeTab === 'Gestao' && isAdmin && (
-          <AdminView onRefresh={() => { fetchProfile(session.user.id); fetchData(); }} />
-        )}
+        {activeTab === 'Painel' && <DashboardView visitors={visitors} deliveries={deliveries} onMarkExitRequest={markExit} onNavigateToReports={(t) => { setReportType(t); setActiveTab('Relatorios'); }} />}
+        {activeTab === 'Entregas' && <DeliveriesView addDelivery={async (d) => {
+            const { error } = await supabase.from('deliveries').insert([{ ...d, user_id: session?.user?.id, obra_id: profile?.workId }]);
+            if (error) { showToast(error.message, 'error'); return false; }
+            await fetchData(); showToast('Entrega registrada!'); return true;
+        }} />}
+        {activeTab === 'Visitantes' && <VisitorsView addVisitor={async (v) => {
+            const { error } = await supabase.from('visitors').insert([{ ...v, user_id: session?.user?.id, obra_id: profile?.workId }]);
+            if (error) { showToast(error.message, 'error'); return false; }
+            await fetchData(); showToast('Visitante registrado!'); return true;
+        }} />}
+        {activeTab === 'Saida' && <ExitView visitors={visitors} deliveries={deliveries} onMarkExitRequest={markExit} />}
+        {activeTab === 'Relatorios' && <ReportsView visitors={visitors} deliveries={deliveries} activeReportType={reportType} onReportTypeChange={setReportType} />}
+        {activeTab === 'Gestao' && isAdmin && <AdminView onRefresh={() => { fetchProfile(session.user.id); fetchData(); }} />}
       </main>
 
-      <BottomNav activeTab={activeTab} setActiveTab={setActiveTab} userRole={currentRole} />
+      <BottomNav activeTab={activeTab} setActiveTab={setActiveTab} userRole={currentRole as any} />
     </div>
   );
 };

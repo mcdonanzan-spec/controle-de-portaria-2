@@ -28,9 +28,9 @@ const NavButton: React.FC<{
 
 const BottomNav: React.FC<BottomNavProps> = ({ activeTab, setActiveTab, userRole }) => {
   const iconClass = "h-5 w-5";
-  const canOperate = userRole === 'admin' || userRole === 'porteiro';
-  const canReport = userRole === 'admin' || userRole === 'gestor';
-  const isAdmin = userRole === 'admin';
+  const isAdmin = userRole === 'admin' || userRole === 'administrador';
+  const canOperate = isAdmin || userRole === 'porteiro';
+  const canReport = isAdmin || userRole === 'gestor';
 
   return (
     <footer className="fixed bottom-0 left-0 right-0 bg-brand-lead shadow-top flex justify-around border-t border-brand-steel z-40 backdrop-blur-md bg-opacity-95">
