@@ -20,6 +20,7 @@ const App: React.FC = () => {
   const [visitors, setVisitors] = useState<Visitor[]>([]);
   const [deliveries, setDeliveries] = useState<Delivery[]>([]);
   const [activeTab, setActiveTab] = useState<'Painel' | 'Entregas' | 'Visitantes' | 'Saida' | 'Relatorios'>('Painel');
+  const [reportType, setReportType] = useState<'visitors' | 'deliveries'>('visitors');
   const [toast, setToast] = useState<{ message: string, show: boolean, type?: 'success' | 'error' }>({ message: '', show: false });
   const [confirmationModal, setConfirmationModal] = useState({
     isOpen: false,
@@ -171,6 +172,11 @@ const App: React.FC = () => {
     }
   }, [fetchData]);
 
+  const navigateToReports = (type: 'visitors' | 'deliveries') => {
+    setReportType(type);
+    setActiveTab('Relatorios');
+  };
+
   if (loading) {
     return (
       <div className="h-screen w-full flex items-center justify-center bg-brand-charcoal">
@@ -205,11 +211,25 @@ const App: React.FC = () => {
       </header>
 
       <main className="flex-grow overflow-y-auto pb-24 bg-brand-charcoal">
-        {activeTab === 'Painel' && <DashboardView visitors={visitors} deliveries={deliveries} onMarkExitRequest={(t, i) => markExit(t, i)} />}
+        {activeTab === 'Painel' && (
+          <DashboardView 
+            visitors={visitors} 
+            deliveries={deliveries} 
+            onMarkExitRequest={(t, i) => markExit(t, i)}
+            onNavigateToReports={navigateToReports}
+          />
+        )}
         {activeTab === 'Entregas' && <DeliveriesView addDelivery={addDelivery} />}
         {activeTab === 'Visitantes' && <VisitorsView addVisitor={addVisitor} />}
         {activeTab === 'Saida' && <ExitView visitors={visitors} deliveries={deliveries} onMarkExitRequest={(t, i) => markExit(t, i)} />}
-        {activeTab === 'Relatorios' && <ReportsView visitors={visitors} deliveries={deliveries} />}
+        {activeTab === 'Relatorios' && (
+          <ReportsView 
+            visitors={visitors} 
+            deliveries={deliveries} 
+            activeReportType={reportType} 
+            onReportTypeChange={setReportType}
+          />
+        )}
       </main>
 
       <BottomNav activeTab={activeTab} setActiveTab={setActiveTab} />
