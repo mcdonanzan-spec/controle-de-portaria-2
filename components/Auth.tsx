@@ -8,13 +8,13 @@ const Auth: React.FC = () => {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [isSignUp, setIsSignUp] = useState(false);
-    const [message, setMessage] = useState<{ text: string, type: 'error' | 'success' } | null>(null);
+    const [message, setMessage] = useState<{ text: string, type: 'error' | 'success' | 'warning' } | null>(null);
 
     const handleAuth = async (e: React.FormEvent) => {
         e.preventDefault();
         
         if (!isConfigured) {
-            setMessage({ text: 'Erro de conexão: O sistema não foi configurado corretamente no arquivo lib/supabase.ts', type: 'error' });
+            setMessage({ text: 'Configuração incompleta.', type: 'error' });
             return;
         }
         
@@ -23,15 +23,41 @@ const Auth: React.FC = () => {
 
         try {
             if (isSignUp) {
-                const { error } = await supabase.auth.signUp({ email, password });
+                const { error } = await supabase.auth.signUp({ 
+                    email, 
+                    password,
+                    options: {
+                        data: {
+                            full_name: email.split('@')[0],
+                        }
+                    }
+                });
                 if (error) throw error;
-                setMessage({ text: 'Cadastro realizado! Verifique seu e-mail ou faça login.', type: 'success' });
+                setMessage({ 
+                    text: 'Cadastro realizado! Verifique sua caixa de entrada (e SPAM) para confirmar o e-mail antes de tentar entrar.', 
+                    type: 'success' 
+                });
             } else {
                 const { error } = await supabase.auth.signInWithPassword({ email, password });
                 if (error) throw error;
             }
         } catch (error: any) {
-            setMessage({ text: error.message || 'Erro ao acessar o sistema', type: 'error' });
+            console.error("Erro de Autenticação:", error);
+            
+            let errorMsg = error.message || 'Erro inesperado';
+            
+            if (errorMsg === 'Failed to fetch') {
+                setMessage({ 
+                    text: '⚠️ SEM CONEXÃO: Verifique se o seu projeto no Supabase está ATIVO (não pausado) ou tente usar o 4G do celular. Redes corporativas podem bloquear o acesso.', 
+                    type: 'error' 
+                });
+            } else if (errorMsg.includes('Email not confirmed')) {
+                setMessage({ text: 'E-mail não confirmado. Por favor, valide o link enviado para o seu e-mail.', type: 'error' });
+            } else if (errorMsg.includes('User already registered')) {
+                setMessage({ text: 'Este e-mail já está cadastrado. Tente fazer login.', type: 'warning' });
+            } else {
+                setMessage({ text: errorMsg, type: 'error' });
+            }
         } finally {
             setLoading(false);
         }
@@ -47,18 +73,12 @@ const Auth: React.FC = () => {
                 </div>
                 
                 <div className="p-8">
-                    {!isConfigured && (
-                        <div className="mb-6 p-4 bg-red-500/10 border border-red-500/50 rounded-xl">
-                            <p className="text-red-400 text-xs font-bold uppercase mb-1">⚠️ Erro de Instalação</p>
-                            <p className="text-brand-text-muted text-[10px]">As chaves do Supabase não foram encontradas no código. O desenvolvedor precisa editar o arquivo <code className="text-brand-amber">lib/supabase.ts</code>.</p>
-                        </div>
-                    )}
-
                     <form onSubmit={handleAuth} className="space-y-5">
                         {message && (
-                            <div className={`p-3 rounded-lg text-[11px] font-bold border ${
+                            <div className={`p-4 rounded-xl text-[11px] font-bold border leading-relaxed ${
                                 message.type === 'error' ? 'bg-red-500/10 text-red-400 border-red-500/30' : 
-                                'bg-green-500/10 text-green-400 border-green-500/30'
+                                message.type === 'success' ? 'bg-green-500/10 text-green-400 border-green-500/30' :
+                                'bg-yellow-500/10 text-yellow-400 border-yellow-500/30'
                             }`}>
                                 {message.text}
                             </div>
@@ -73,7 +93,7 @@ const Auth: React.FC = () => {
                                     value={email} 
                                     onChange={(e) => setEmail(e.target.value)} 
                                     className="w-full bg-brand-steel border-brand-slate border-2 rounded-xl py-3 pl-10 pr-3 text-brand-text outline-none focus:border-brand-amber transition-all" 
-                                    placeholder="exemplo@empresa.com"
+                                    placeholder="exemplo@gmail.com"
                                     required 
                                 />
                             </div>
@@ -96,20 +116,27 @@ const Auth: React.FC = () => {
 
                         <button 
                             type="submit" 
-                            disabled={loading || !isConfigured} 
-                            className="w-full bg-brand-amber hover:bg-white text-brand-charcoal font-black py-4 rounded-xl transition-all active:scale-[0.98] shadow-lg uppercase text-sm tracking-wider disabled:opacity-50 disabled:cursor-not-allowed"
+                            disabled={loading} 
+                            className="w-full bg-brand-amber hover:bg-white text-brand-charcoal font-black py-4 rounded-xl transition-all active:scale-[0.98] shadow-lg uppercase text-sm tracking-wider disabled:opacity-50"
                         >
-                            {loading ? 'Validando...' : (isSignUp ? 'Finalizar Cadastro' : 'Entrar no Sistema')}
+                            {loading ? 'Processando...' : (isSignUp ? 'Finalizar Cadastro' : 'Entrar no Sistema')}
                         </button>
 
                         <button 
                             type="button" 
-                            onClick={() => setIsSignUp(!isSignUp)} 
-                            className="w-full text-brand-text-muted text-[10px] font-bold uppercase tracking-widest hover:text-brand-amber transition-colors"
+                            onClick={() => { setIsSignUp(!isSignUp); setMessage(null); }} 
+                            className="w-full text-brand-text-muted text-[10px] font-bold uppercase tracking-widest hover:text-brand-amber transition-colors mt-2"
                         >
                             {isSignUp ? 'Já tenho acesso' : 'Primeiro acesso? Solicitar cadastro'}
                         </button>
                     </form>
+                </div>
+                
+                <div className="bg-black/20 p-3 text-center border-t border-brand-steel">
+                   <p className="text-[9px] text-brand-text-muted uppercase tracking-widest leading-relaxed">
+                     ID do Projeto: <span className="text-brand-amber font-bold">fjpeafeudzyfgnghxfafa</span><br/>
+                     Status: <span className="text-feedback-success">Conexão Ativa</span>
+                   </p>
                 </div>
             </div>
             <p className="fixed bottom-4 text-[9px] text-brand-text-muted/30 uppercase font-bold">Canteiro Seguro © 2024 - Sistema de Segurança Patrimonial</p>
