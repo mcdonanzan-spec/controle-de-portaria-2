@@ -48,13 +48,13 @@ const Auth: React.FC = () => {
             
             if (errorMsg === 'Failed to fetch') {
                 setMessage({ 
-                    text: '⚠️ SEM CONEXÃO: Verifique se o seu projeto no Supabase está ATIVO (não pausado) ou tente usar o 4G do celular. Redes corporativas podem bloquear o acesso.', 
+                    text: '⚠️ SEM CONEXÃO: Ocorreu um erro ao tentar falar com o servidor do Supabase. Verifique se o projeto não foi pausado no painel da Supabase.', 
                     type: 'error' 
                 });
             } else if (errorMsg.includes('Email not confirmed')) {
                 setMessage({ text: 'E-mail não confirmado. Por favor, valide o link enviado para o seu e-mail.', type: 'error' });
-            } else if (errorMsg.includes('User already registered')) {
-                setMessage({ text: 'Este e-mail já está cadastrado. Tente fazer login.', type: 'warning' });
+            } else if (errorMsg.includes('invalid claim')) {
+                setMessage({ text: 'Erro nas credenciais de conexão. Verifique as chaves do projeto.', type: 'error' });
             } else {
                 setMessage({ text: errorMsg, type: 'error' });
             }
@@ -93,7 +93,7 @@ const Auth: React.FC = () => {
                                     value={email} 
                                     onChange={(e) => setEmail(e.target.value)} 
                                     className="w-full bg-brand-steel border-brand-slate border-2 rounded-xl py-3 pl-10 pr-3 text-brand-text outline-none focus:border-brand-amber transition-all" 
-                                    placeholder="exemplo@gmail.com"
+                                    placeholder="seu-email@dominio.com"
                                     required 
                                 />
                             </div>
@@ -134,8 +134,8 @@ const Auth: React.FC = () => {
                 
                 <div className="bg-black/20 p-3 text-center border-t border-brand-steel">
                    <p className="text-[9px] text-brand-text-muted uppercase tracking-widest leading-relaxed">
-                     ID do Projeto: <span className="text-brand-amber font-bold">fjpeafeudzyfgnghxfafa</span><br/>
-                     Status: <span className="text-feedback-success">Conexão Ativa</span>
+                     ID do Projeto: <span className="text-brand-amber font-bold">fjpeafeudzyfgnghxafa</span><br/>
+                     Status: <span className="text-feedback-success">Conexão Estabelecida</span>
                    </p>
                 </div>
             </div>
