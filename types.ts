@@ -1,5 +1,23 @@
+
+export type UserRole = 'admin' | 'porteiro' | 'gestor';
+
+export interface Work {
+  id: number;
+  name: string;
+  address: string;
+  active: boolean;
+}
+
+export interface UserProfile {
+  id: string;
+  fullName: string;
+  role: UserRole;
+  workId?: number;
+}
+
 export interface Visitor {
   id: number;
+  workId: number;
   name: string;
   document: string;
   company: string;
@@ -22,6 +40,7 @@ export interface Visitor {
 
 export interface Delivery {
   id: number;
+  workId: number;
   supplier: string;
   driverName: string;
   driverDocument: string;

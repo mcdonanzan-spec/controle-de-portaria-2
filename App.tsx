@@ -1,6 +1,6 @@
 
 import React, { useState, useCallback, useEffect } from 'react';
-import { Visitor, Delivery } from './types.ts';
+import { Visitor, Delivery, UserProfile, UserRole } from './types.ts';
 import { supabase } from './lib/supabase.ts';
 
 import BottomNav from './components/BottomNav.tsx';
@@ -9,6 +9,7 @@ import VisitorsView from './components/views/VisitorsView.tsx';
 import ExitView from './components/views/ExitView.tsx';
 import ReportsView from './components/views/ReportsView.tsx';
 import DashboardView from './components/views/DashboardView.tsx';
+import AdminView from './components/views/AdminView.tsx';
 import Auth from './components/Auth.tsx';
 import { BuildingIcon, LogoutIcon } from './components/icons.tsx';
 import Toast from './components/Toast.tsx';
@@ -16,10 +17,11 @@ import ConfirmationModal from './components/ConfirmationModal.tsx';
 
 const App: React.FC = () => {
   const [session, setSession] = useState<any>(null);
+  const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [visitors, setVisitors] = useState<Visitor[]>([]);
   const [deliveries, setDeliveries] = useState<Delivery[]>([]);
-  const [activeTab, setActiveTab] = useState<'Painel' | 'Entregas' | 'Visitantes' | 'Saida' | 'Relatorios'>('Painel');
+  const [activeTab, setActiveTab] = useState<'Painel' | 'Entregas' | 'Visitantes' | 'Saida' | 'Relatorios' | 'Gestao'>('Painel');
   const [reportType, setReportType] = useState<'visitors' | 'deliveries'>('visitors');
   const [toast, setToast] = useState<{ message: string, show: boolean, type?: 'success' | 'error' }>({ message: '', show: false });
   const [confirmationModal, setConfirmationModal] = useState({
@@ -29,31 +31,67 @@ const App: React.FC = () => {
     onConfirm: () => {},
   });
 
+  // Buscar perfil do usuário após o login
+  const fetchProfile = async (userId: string) => {
+    const { data, error } = await supabase
+      .from('perfis')
+      .select('*, obras(nome)')
+      .eq('id', userId)
+      .single();
+
+    if (!error && data) {
+      setProfile({
+        id: data.id,
+        fullName: data.nome_completo,
+        role: data.cargo,
+        workId: data.obra_id
+      });
+    } else {
+      // Se não houver perfil, assumimos porteiro sem obra até ser configurado pelo admin
+      setProfile({
+        id: userId,
+        fullName: 'Novo Usuário',
+        role: 'porteiro'
+      });
+    }
+  };
+
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
+      if (session) fetchProfile(session.user.id);
       setLoading(false);
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
+      if (session) fetchProfile(session.user.id);
+      else setProfile(null);
     });
 
     return () => subscription.unsubscribe();
   }, []);
 
   const fetchData = useCallback(async () => {
-    if (!session) return;
+    if (!session || !profile) return;
     
     try {
-      const { data: vData, error: vError } = await supabase
-        .from('visitors')
-        .select('*')
-        .order('entry_time', { ascending: false });
+      // Query base filtrada por obra (a menos que seja admin global)
+      let vQuery = supabase.from('visitors').select('*');
+      let dQuery = supabase.from('deliveries').select('*');
+
+      if (profile.role !== 'admin' && profile.workId) {
+        vQuery = vQuery.eq('obra_id', profile.workId);
+        dQuery = dQuery.eq('obra_id', profile.workId);
+      }
+
+      const { data: vData } = await vQuery.order('entry_time', { ascending: false });
+      const { data: dData } = await dQuery.order('entry_time', { ascending: false });
       
-      if (!vError && vData) {
+      if (vData) {
         setVisitors(vData.map(v => ({
           ...v,
+          workId: v.obra_id,
           entryTime: new Date(v.entry_time),
           exitTime: v.exit_time ? new Date(v.exit_time) : undefined,
           epi: { helmet: v.helmet, boots: v.boots, glasses: v.glasses },
@@ -63,14 +101,10 @@ const App: React.FC = () => {
         })));
       }
 
-      const { data: dData, error: dError } = await supabase
-        .from('deliveries')
-        .select('*')
-        .order('entry_time', { ascending: false });
-      
-      if (!dError && dData) {
+      if (dData) {
         setDeliveries(dData.map(d => ({
           ...d,
+          workId: d.obra_id,
           entryTime: new Date(d.entry_time),
           exitTime: d.exit_time ? new Date(d.exit_time) : undefined,
           invoicePhoto: d.invoice_photo,
@@ -84,11 +118,11 @@ const App: React.FC = () => {
     } catch (err) {
       console.error("Erro ao buscar dados:", err);
     }
-  }, [session]);
+  }, [session, profile]);
 
   useEffect(() => {
-    if (session) fetchData();
-  }, [session, fetchData]);
+    if (session && profile) fetchData();
+  }, [session, profile, fetchData]);
   
   const showToast = (message: string, type: 'success' | 'error' = 'success') => {
     setToast({ message, show: true, type });
@@ -106,7 +140,12 @@ const App: React.FC = () => {
     });
   };
 
-  const addVisitor = useCallback(async (visitorData: Omit<Visitor, 'id' | 'entryTime' | 'exitTime'>): Promise<boolean> => {
+  const addVisitor = useCallback(async (visitorData: Omit<Visitor, 'id' | 'entryTime' | 'exitTime' | 'workId'>): Promise<boolean> => {
+    if (!profile?.workId && profile?.role !== 'admin') {
+      showToast('Usuário sem obra vinculada. Contate o administrador.', 'error');
+      return false;
+    }
+
     const { error } = await supabase.from('visitors').insert([{
       name: visitorData.name,
       document: visitorData.document,
@@ -120,11 +159,11 @@ const App: React.FC = () => {
       vehicle_model: visitorData.vehicle.model,
       vehicle_color: visitorData.vehicle.color,
       vehicle_plate: visitorData.vehicle.plate,
-      user_id: session?.user?.id
+      user_id: session?.user?.id,
+      obra_id: profile?.workId
     }]);
 
     if (error) {
-      console.error("Erro Supabase:", error);
       showToast('Erro ao salvar visitante: ' + error.message, 'error');
       return false;
     }
@@ -132,9 +171,14 @@ const App: React.FC = () => {
     await fetchData();
     showToast('Visitante registrado com sucesso!');
     return true;
-  }, [session, fetchData]);
+  }, [session, profile, fetchData]);
 
-  const addDelivery = useCallback(async (deliveryData: Omit<Delivery, 'id' | 'entryTime' | 'exitTime'>): Promise<boolean> => {
+  const addDelivery = useCallback(async (deliveryData: Omit<Delivery, 'id' | 'entryTime' | 'exitTime' | 'workId'>): Promise<boolean> => {
+    if (!profile?.workId && profile?.role !== 'admin') {
+      showToast('Usuário sem obra vinculada.', 'error');
+      return false;
+    }
+
     const { error } = await supabase.from('deliveries').insert([{
       supplier: deliveryData.supplier,
       driver_name: deliveryData.driverName,
@@ -143,11 +187,11 @@ const App: React.FC = () => {
       license_plate: deliveryData.licensePlate,
       invoice_photo: deliveryData.invoicePhoto,
       plate_photo: deliveryData.platePhoto,
-      user_id: session?.user?.id
+      user_id: session?.user?.id,
+      obra_id: profile?.workId
     }]);
 
     if (error) {
-      console.error("Erro Supabase:", error);
       showToast('Erro ao salvar entrega: ' + error.message, 'error');
       return false;
     }
@@ -155,7 +199,7 @@ const App: React.FC = () => {
     await fetchData();
     showToast('Entrega registrada com sucesso!');
     return true;
-  }, [session, fetchData]);
+  }, [session, profile, fetchData]);
 
   const markExit = useCallback(async (type: 'visitor' | 'delivery', id: number) => {
     const table = type === 'visitor' ? 'visitors' : 'deliveries';
@@ -180,7 +224,7 @@ const App: React.FC = () => {
   if (loading) {
     return (
       <div className="h-screen w-full flex items-center justify-center bg-brand-charcoal">
-        <div className="text-brand-amber animate-pulse font-bold tracking-widest">INICIALIZANDO SISTEMA...</div>
+        <div className="text-brand-amber animate-pulse font-bold tracking-widest text-xs uppercase">Sincronizando Perfil...</div>
       </div>
     );
   }
@@ -188,6 +232,11 @@ const App: React.FC = () => {
   if (!session) {
     return <Auth />;
   }
+
+  // Filtrar abas permitidas por cargo
+  const canSeeOperational = profile?.role === 'admin' || profile?.role === 'porteiro';
+  const canSeeReports = profile?.role === 'admin' || profile?.role === 'gestor';
+  const isAdmin = profile?.role === 'admin';
 
   return (
     <div className="flex flex-col h-screen overflow-hidden font-sans">
@@ -204,7 +253,12 @@ const App: React.FC = () => {
             <BuildingIcon className="h-8 w-8 mr-3 text-brand-amber" />
             <div className="flex flex-col">
               <h1 className="text-lg font-black text-brand-text uppercase leading-none">Canteiro Seguro</h1>
-              <span className="text-[10px] text-brand-text-muted font-bold tracking-tighter">CONTROLE DE PORTARIA</span>
+              <div className="flex items-center gap-2 mt-1">
+                <span className="text-[8px] bg-brand-amber/20 text-brand-amber px-1.5 py-0.5 rounded font-black uppercase tracking-widest">{profile?.role}</span>
+                <span className="text-[9px] text-brand-text-muted font-bold uppercase truncate max-w-[120px]">
+                  {profile?.workId ? `Obra ID: ${profile.workId}` : 'Aguardando Vínculo'}
+                </span>
+              </div>
             </div>
         </div>
         <button onClick={handleLogout} className="p-2 text-brand-text-muted hover:text-feedback-error transition-colors"><LogoutIcon className="h-6 w-6" /></button>
@@ -219,10 +273,10 @@ const App: React.FC = () => {
             onNavigateToReports={navigateToReports}
           />
         )}
-        {activeTab === 'Entregas' && <DeliveriesView addDelivery={addDelivery} />}
-        {activeTab === 'Visitantes' && <VisitorsView addVisitor={addVisitor} />}
-        {activeTab === 'Saida' && <ExitView visitors={visitors} deliveries={deliveries} onMarkExitRequest={(t, i) => markExit(t, i)} />}
-        {activeTab === 'Relatorios' && (
+        {activeTab === 'Entregas' && canSeeOperational && <DeliveriesView addDelivery={addDelivery} />}
+        {activeTab === 'Visitantes' && canSeeOperational && <VisitorsView addVisitor={addVisitor} />}
+        {activeTab === 'Saida' && canSeeOperational && <ExitView visitors={visitors} deliveries={deliveries} onMarkExitRequest={(t, i) => markExit(t, i)} />}
+        {activeTab === 'Relatorios' && canSeeReports && (
           <ReportsView 
             visitors={visitors} 
             deliveries={deliveries} 
@@ -230,9 +284,12 @@ const App: React.FC = () => {
             onReportTypeChange={setReportType}
           />
         )}
+        {activeTab === 'Gestao' && isAdmin && (
+          <AdminView onRefresh={() => fetchData()} />
+        )}
       </main>
 
-      <BottomNav activeTab={activeTab} setActiveTab={setActiveTab} />
+      <BottomNav activeTab={activeTab} setActiveTab={setActiveTab} userRole={profile?.role || 'porteiro'} />
     </div>
   );
 };
