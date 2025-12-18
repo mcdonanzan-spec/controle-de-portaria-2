@@ -47,11 +47,12 @@ const App: React.FC = () => {
           workId: data.obra_id
         });
       } else {
-        // Fallback para novo usuário sem perfil ainda
+        // Se der erro ou não achar, criamos um perfil básico para não travar o app
         setProfile({ id: userId, fullName: 'Usuário', role: 'porteiro' });
       }
     } catch (err) {
-      console.error("Erro perfil:", err);
+      console.error("Erro ao carregar perfil:", err);
+      setProfile({ id: userId, fullName: 'Usuário', role: 'porteiro' });
     }
   };
 
@@ -82,12 +83,12 @@ const App: React.FC = () => {
       let vQuery = supabase.from('visitors').select('*');
       let dQuery = supabase.from('deliveries').select('*');
 
-      // Regra de Ouro: Admin vê tudo, Porteiro/Gestor vê apenas sua obra
+      // REGRA DE ACESSO: Se for admin, vê tudo. Se for porteiro/gestor, só vê a obra dele.
       if (profile.role !== 'admin' && profile.workId) {
         vQuery = vQuery.eq('obra_id', profile.workId);
         dQuery = dQuery.eq('obra_id', profile.workId);
       } else if (profile.role !== 'admin' && !profile.workId) {
-        // Usuário sem obra vinculada não vê nada por segurança
+        // Segurança: Se não for admin e não tiver obra, não vê nada
         setVisitors([]);
         setDeliveries([]);
         return;
@@ -124,7 +125,7 @@ const App: React.FC = () => {
         })));
       }
     } catch (err) {
-      console.error("Erro ao buscar dados:", err);
+      console.error("Erro ao buscar registros:", err);
     }
   }, [session, profile]);
 
@@ -150,7 +151,7 @@ const App: React.FC = () => {
 
   const addVisitor = useCallback(async (visitorData: Omit<Visitor, 'id' | 'entryTime' | 'exitTime' | 'workId'>): Promise<boolean> => {
     if (!profile?.workId && profile?.role !== 'admin') {
-      showToast('Usuário sem obra vinculada. Contate o ADM.', 'error');
+      showToast('Atenção: Você precisa estar vinculado a uma obra para registrar.', 'error');
       return false;
     }
 
@@ -172,18 +173,18 @@ const App: React.FC = () => {
     }]);
 
     if (error) {
-      showToast('Erro: ' + error.message, 'error');
+      showToast('Erro ao salvar: ' + error.message, 'error');
       return false;
     }
 
     await fetchData();
-    showToast('Visitante registrado!');
+    showToast('Visitante cadastrado com sucesso!');
     return true;
   }, [session, profile, fetchData]);
 
   const addDelivery = useCallback(async (deliveryData: Omit<Delivery, 'id' | 'entryTime' | 'exitTime' | 'workId'>): Promise<boolean> => {
     if (!profile?.workId && profile?.role !== 'admin') {
-      showToast('Usuário sem obra vinculada.', 'error');
+      showToast('Erro: Vínculo de obra não encontrado.', 'error');
       return false;
     }
 
@@ -200,12 +201,12 @@ const App: React.FC = () => {
     }]);
 
     if (error) {
-      showToast('Erro: ' + error.message, 'error');
+      showToast('Erro ao salvar entrega: ' + error.message, 'error');
       return false;
     }
 
     await fetchData();
-    showToast('Entrega registrada!');
+    showToast('Entrega registrada com sucesso!');
     return true;
   }, [session, profile, fetchData]);
 
@@ -217,10 +218,10 @@ const App: React.FC = () => {
       .eq('id', id);
 
     if (error) {
-      showToast('Erro na saída: ' + error.message, 'error');
+      showToast('Erro ao registrar saída: ' + error.message, 'error');
     } else {
       await fetchData();
-      showToast("Saída registrada!");
+      showToast("Saída confirmada!");
     }
   }, [fetchData]);
 
@@ -232,7 +233,10 @@ const App: React.FC = () => {
   if (loading) {
     return (
       <div className="h-screen w-full flex items-center justify-center bg-brand-charcoal">
-        <div className="text-brand-amber animate-pulse font-black text-[10px] uppercase tracking-widest">Sincronizando Sistema...</div>
+          <div className="flex flex-col items-center gap-4">
+            <div className="text-brand-amber animate-spin rounded-full h-12 w-12 border-b-2 border-brand-amber"></div>
+            <div className="text-brand-text-muted font-black text-[10px] uppercase tracking-widest">Carregando Perfil...</div>
+          </div>
       </div>
     );
   }
@@ -241,10 +245,10 @@ const App: React.FC = () => {
     return <Auth />;
   }
 
-  const role = profile?.role || 'porteiro';
-  const canOperate = role === 'porteiro' || role === 'admin';
-  const canReport = role === 'gestor' || role === 'admin';
-  const isAdmin = role === 'admin';
+  const currentRole = profile?.role || 'porteiro';
+  const isAdmin = currentRole === 'admin';
+  const isGestor = currentRole === 'gestor';
+  const isPorteiro = currentRole === 'porteiro';
 
   return (
     <div className="flex flex-col h-screen overflow-hidden font-sans">
@@ -262,9 +266,9 @@ const App: React.FC = () => {
             <div className="flex flex-col">
               <h1 className="text-lg font-black text-brand-text uppercase leading-none">Canteiro Seguro</h1>
               <div className="flex items-center gap-2 mt-1">
-                <span className="text-[7px] bg-brand-amber/20 text-brand-amber px-1 py-0.5 rounded font-black uppercase tracking-widest">{role}</span>
+                <span className="text-[7px] bg-brand-amber/20 text-brand-amber px-1.5 py-0.5 rounded font-black uppercase tracking-widest">{currentRole}</span>
                 <span className="text-[8px] text-brand-text-muted font-bold uppercase truncate max-w-[150px]">
-                  {profile?.workId ? `Unidade ID: ${profile.workId}` : 'Aguardando Alocação'}
+                  {profile?.workId ? `Obra ID: ${profile.workId}` : 'Aguardando Atribuição'}
                 </span>
               </div>
             </div>
@@ -281,10 +285,10 @@ const App: React.FC = () => {
             onNavigateToReports={navigateToReports}
           />
         )}
-        {activeTab === 'Entregas' && canOperate && <DeliveriesView addDelivery={addDelivery} />}
-        {activeTab === 'Visitantes' && canOperate && <VisitorsView addVisitor={addVisitor} />}
-        {activeTab === 'Saida' && canOperate && <ExitView visitors={visitors} deliveries={deliveries} onMarkExitRequest={(t, i) => markExit(t, i)} />}
-        {activeTab === 'Relatorios' && canReport && (
+        {activeTab === 'Entregas' && (isAdmin || isPorteiro) && <DeliveriesView addDelivery={addDelivery} />}
+        {activeTab === 'Visitantes' && (isAdmin || isPorteiro) && <VisitorsView addVisitor={addVisitor} />}
+        {activeTab === 'Saida' && (isAdmin || isPorteiro) && <ExitView visitors={visitors} deliveries={deliveries} onMarkExitRequest={(t, i) => markExit(t, i)} />}
+        {activeTab === 'Relatorios' && (isAdmin || isGestor) && (
           <ReportsView 
             visitors={visitors} 
             deliveries={deliveries} 
@@ -297,7 +301,7 @@ const App: React.FC = () => {
         )}
       </main>
 
-      <BottomNav activeTab={activeTab} setActiveTab={setActiveTab} userRole={role} />
+      <BottomNav activeTab={activeTab} setActiveTab={setActiveTab} userRole={currentRole} />
     </div>
   );
 };
