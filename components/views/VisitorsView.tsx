@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { Visitor } from '../../types';
 import CameraCapture from '../CameraCapture';
@@ -6,8 +7,7 @@ import { UserIcon, CheckCircleIcon, XCircleIcon } from '../icons';
 import { formatDocument } from '../../utils/formatters';
 
 interface VisitorsViewProps {
-    addVisitor: (visitor: Omit<Visitor, 'id' | 'entryTime' | 'exitTime'>) => void;
-    showToast: (message: string) => void;
+    addVisitor: (visitor: Omit<Visitor, 'id' | 'entryTime' | 'exitTime'>) => Promise<boolean>;
 }
 
 const initialFormData = {
@@ -29,7 +29,7 @@ const initialFormData = {
     }
 };
 
-const VisitorsView: React.FC<VisitorsViewProps> = ({ addVisitor, showToast }) => {
+const VisitorsView: React.FC<VisitorsViewProps> = ({ addVisitor }) => {
     const [formData, setFormData] = useState(initialFormData);
     const [error, setError] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -61,98 +61,90 @@ const VisitorsView: React.FC<VisitorsViewProps> = ({ addVisitor, showToast }) =>
         setError('');
     };
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if(isSubmitting) return;
 
         const requiredFields: (keyof typeof initialFormData)[] = ['name', 'document', 'company', 'visitReason', 'personVisited', 'photo'];
         for (const field of requiredFields) {
-            if (!formData[field]) {
-                setError('Todos os campos de dados do visitante e a foto são obrigatórios.');
+            if (!formData[field as keyof typeof formData]) {
+                setError('Todos os campos obrigatórios e a foto devem ser preenchidos.');
                 return;
             }
         }
         if (!formData.epi.helmet || !formData.epi.boots || !formData.epi.glasses) {
-            setError('Todos os EPIs são de uso obrigatório e devem ser confirmados.');
+            setError('Confirme o uso obrigatório de todos os EPIs.');
             return;
         }
 
         setIsSubmitting(true);
-        addVisitor(formData);
-        showToast('Visitante registrado com sucesso!');
-        handleClear();
+        setError('');
+        
+        const success = await addVisitor(formData);
+        
+        if (success) {
+            handleClear();
+        }
+        
         setIsSubmitting(false);
     };
 
     return (
-        <FormWrapper title="Cadastro de Visitante" icon={<UserIcon className="h-7 w-7" />} colorClass="bg-[#8E44AD]">
+        <FormWrapper title="Cadastro de Visitante" icon={<UserIcon className="h-7 w-7" />} colorClass="bg-brand-amber">
             <form onSubmit={handleSubmit} noValidate className="space-y-6">
-                {error && <p className="text-feedback-error bg-red-900/50 p-3 rounded-md text-center font-semibold">{error}</p>}
+                {error && (
+                    <div className="bg-red-500/10 border border-red-500/50 p-4 rounded-xl flex items-center gap-3">
+                        <XCircleIcon className="text-red-500 h-5 w-5 shrink-0" />
+                        <p className="text-red-400 text-sm font-bold">{error}</p>
+                    </div>
+                )}
                 
-                <fieldset className="border border-brand-steel p-4 rounded-lg">
-                    <legend className="px-2 font-bold text-brand-amber">Dados Pessoais</legend>
+                <fieldset className="border border-brand-steel p-5 rounded-2xl bg-brand-charcoal/30">
+                    <legend className="px-3 font-black text-[10px] text-brand-amber uppercase tracking-widest">Identificação</legend>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="md:col-span-2">
-                            <label className="block text-brand-text text-sm font-bold mb-2">Nome Completo *</label>
-                            <input name="name" value={formData.name} onChange={handleInputChange} className="w-full bg-brand-steel border-brand-slate border rounded py-2 px-3 text-brand-text" type="text" placeholder="Nome do visitante" />
+                            <label className="block text-brand-text-muted text-[10px] font-black uppercase mb-1 ml-1">Nome Completo *</label>
+                            <input name="name" value={formData.name} onChange={handleInputChange} className="w-full bg-brand-steel border-brand-slate border-2 rounded-xl py-2 px-3 text-brand-text outline-none focus:border-brand-amber transition-all" type="text" placeholder="NOME DO VISITANTE" />
                         </div>
                         <div>
-                            <label className="block text-brand-text text-sm font-bold mb-2">Documento *</label>
-                            <input name="document" value={formData.document} onChange={handleInputChange} className="w-full bg-brand-steel border-brand-slate border rounded py-2 px-3 text-brand-text" type="text" placeholder="RG ou CPF" />
+                            <label className="block text-brand-text-muted text-[10px] font-black uppercase mb-1 ml-1">Documento *</label>
+                            <input name="document" value={formData.document} onChange={handleInputChange} className="w-full bg-brand-steel border-brand-slate border-2 rounded-xl py-2 px-3 text-brand-text outline-none focus:border-brand-amber transition-all" type="text" placeholder="RG OU CPF" />
                         </div>
                         <div>
-                            <label className="block text-brand-text text-sm font-bold mb-2">Empresa/Origem *</label>
-                            <input name="company" value={formData.company} onChange={handleInputChange} className="w-full bg-brand-steel border-brand-slate border rounded py-2 px-3 text-brand-text" type="text" placeholder="Empresa do visitante" />
+                            <label className="block text-brand-text-muted text-[10px] font-black uppercase mb-1 ml-1">Empresa/Origem *</label>
+                            <input name="company" value={formData.company} onChange={handleInputChange} className="w-full bg-brand-steel border-brand-slate border-2 rounded-xl py-2 px-3 text-brand-text outline-none focus:border-brand-amber transition-all" type="text" placeholder="EMPRESA" />
                         </div>
                         <div>
-                            <label className="block text-brand-text text-sm font-bold mb-2">Motivo da Visita *</label>
-                            <input name="visitReason" value={formData.visitReason} onChange={handleInputChange} className="w-full bg-brand-steel border-brand-slate border rounded py-2 px-3 text-brand-text" type="text" placeholder="Ex: Reunião, Vistoria" />
+                            <label className="block text-brand-text-muted text-[10px] font-black uppercase mb-1 ml-1">Motivo da Visita *</label>
+                            <input name="visitReason" value={formData.visitReason} onChange={handleInputChange} className="w-full bg-brand-steel border-brand-slate border-2 rounded-xl py-2 px-3 text-brand-text outline-none focus:border-brand-amber transition-all" type="text" placeholder="EX: REUNIÃO" />
                         </div>
                         <div>
-                            <label className="block text-brand-text text-sm font-bold mb-2">Pessoa/Setor a ser visitado *</label>
-                            <input name="personVisited" value={formData.personVisited} onChange={handleInputChange} className="w-full bg-brand-steel border-brand-slate border rounded py-2 px-3 text-brand-text" type="text" placeholder="Ex: Eng. João" />
+                            <label className="block text-brand-text-muted text-[10px] font-black uppercase mb-1 ml-1">Pessoa a visitar *</label>
+                            <input name="personVisited" value={formData.personVisited} onChange={handleInputChange} className="w-full bg-brand-steel border-brand-slate border-2 rounded-xl py-2 px-3 text-brand-text outline-none focus:border-brand-amber transition-all" type="text" placeholder="NOME DO RESPONSÁVEL" />
                         </div>
                     </div>
                 </fieldset>
 
-                <fieldset className="border border-brand-steel p-4 rounded-lg">
-                    <legend className="px-2 font-bold text-brand-amber">Controle de EPI *</legend>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <fieldset className="border border-brand-steel p-5 rounded-2xl bg-brand-charcoal/30">
+                    <legend className="px-3 font-black text-[10px] text-brand-amber uppercase tracking-widest">Segurança (EPI) *</legend>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                         {Object.keys(formData.epi).map((key) => (
-                             <label key={key} className="flex items-center space-x-2 cursor-pointer bg-brand-steel p-3 rounded-md">
-                                <input type="checkbox" name={`epi-${key}`} checked={formData.epi[key as keyof typeof formData.epi]} onChange={handleInputChange} className="h-5 w-5 rounded text-brand-blue focus:ring-brand-blue" />
-                                <span className="text-white font-medium capitalize">{key === 'helmet' ? 'Capacete' : key === 'boots' ? 'Bota' : 'Óculos'}</span>
+                             <label key={key} className={`flex items-center gap-3 p-4 rounded-xl border-2 transition-all cursor-pointer ${formData.epi[key as keyof typeof formData.epi] ? 'bg-feedback-success/10 border-feedback-success text-feedback-success' : 'bg-brand-steel border-brand-slate text-brand-text-muted'}`}>
+                                <input type="checkbox" name={`epi-${key}`} checked={formData.epi[key as keyof typeof formData.epi]} onChange={handleInputChange} className="h-5 w-5 rounded border-2 border-brand-slate text-feedback-success focus:ring-feedback-success" />
+                                <span className="font-black text-[10px] uppercase tracking-wider">{key === 'helmet' ? 'Capacete' : key === 'boots' ? 'Botina' : 'Óculos'}</span>
                             </label>
                         ))}
                     </div>
                 </fieldset>
 
-                <fieldset className="border border-brand-steel p-4 rounded-lg">
-                    <legend className="px-2 font-bold text-brand-amber">Veículo do Visitante (Opcional)</legend>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div>
-                            <label className="block text-brand-text text-sm font-bold mb-2">Modelo</label>
-                            <input name="vehicle-model" value={formData.vehicle.model} onChange={handleInputChange} className="w-full bg-brand-steel border-brand-slate border rounded py-2 px-3 text-brand-text" type="text" placeholder="Ex: Fiat Strada" />
-                        </div>
-                        <div>
-                            <label className="block text-brand-text text-sm font-bold mb-2">Cor</label>
-                            <input name="vehicle-color" value={formData.vehicle.color} onChange={handleInputChange} className="w-full bg-brand-steel border-brand-slate border rounded py-2 px-3 text-brand-text" type="text" placeholder="Ex: Branco" />
-                        </div>
-                        <div>
-                            <label className="block text-brand-text text-sm font-bold mb-2">Placa</label>
-                            <input name="vehicle-plate" value={formData.vehicle.plate} onChange={handleInputChange} className="w-full bg-brand-steel border-brand-slate border rounded py-2 px-3 text-brand-text" type="text" placeholder="Ex: ABC1D23" maxLength={7} />
-                        </div>
-                    </div>
-                </fieldset>
-
-                <CameraCapture title="Foto do Visitante *" onCapture={handlePhotoCapture} />
+                <CameraCapture title="Foto de Identificação *" onCapture={handlePhotoCapture} />
 
                 <div className="flex flex-col sm:flex-row gap-4 pt-4 border-t border-brand-steel">
-                    <button type="button" onClick={handleClear} className="w-full flex items-center justify-center bg-brand-steel hover:bg-opacity-80 text-white font-bold py-3 px-4 rounded transition-colors">
-                        <XCircleIcon className="h-6 w-6 mr-2" /> Limpar
+                    <button type="button" onClick={handleClear} className="w-full bg-brand-steel hover:bg-brand-slate text-white font-black py-4 rounded-xl transition-all uppercase text-xs tracking-widest">
+                        <XCircleIcon className="h-5 w-5 mr-2" /> Limpar
                     </button>
-                    <button type="submit" disabled={isSubmitting} className="w-full flex items-center justify-center bg-feedback-success hover:bg-opacity-80 text-white font-bold py-3 px-4 rounded transition-colors disabled:bg-brand-slate disabled:cursor-not-allowed">
-                        <CheckCircleIcon className="h-6 w-6 mr-2" /> {isSubmitting ? 'Registrando...' : 'Registrar Visitante'}
+                    <button type="submit" disabled={isSubmitting} className="w-full bg-feedback-success hover:scale-[1.02] active:scale-[0.98] text-brand-charcoal font-black py-4 rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed uppercase text-xs tracking-widest shadow-lg">
+                        {isSubmitting ? 'Processando...' : <><CheckCircleIcon className="h-5 w-5 mr-2" /> Registrar Visitante</>}
                     </button>
                 </div>
             </form>
