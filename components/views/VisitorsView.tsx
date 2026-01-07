@@ -17,6 +17,7 @@ const initialFormData = {
     visitReason: '',
     personVisited: '',
     photo: '',
+    platePhoto: '',
     epi: {
         helmet: false,
         boots: false,
@@ -33,7 +34,7 @@ const VisitorsView: React.FC<VisitorsViewProps> = ({ addVisitor }) => {
     const [formData, setFormData] = useState(initialFormData);
     const [error, setError] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
-    const [cameraKey, setCameraKey] = useState(0); // Para forçar reset do componente de câmera
+    const [cameraKey, setCameraKey] = useState(0); 
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value, checked } = e.target;
@@ -56,18 +57,21 @@ const VisitorsView: React.FC<VisitorsViewProps> = ({ addVisitor }) => {
     const handlePhotoCapture = (photo: string) => {
         setFormData(prev => ({ ...prev, photo }));
     };
+
+    const handlePlatePhotoCapture = (photo: string) => {
+        setFormData(prev => ({ ...prev, platePhoto: photo }));
+    };
     
     const handleClear = () => {
         setFormData(initialFormData);
         setError('');
-        setCameraKey(prev => prev + 1); // Reseta visualmente o componente de câmera
+        setCameraKey(prev => prev + 1);
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if(isSubmitting) return;
 
-        // Validação de campos de texto e foto
         const requiredFields: (keyof typeof initialFormData)[] = ['name', 'document', 'company', 'visitReason', 'personVisited', 'photo'];
         for (const field of requiredFields) {
             if (!formData[field as keyof typeof formData]) {
@@ -76,7 +80,6 @@ const VisitorsView: React.FC<VisitorsViewProps> = ({ addVisitor }) => {
             }
         }
 
-        // NOVA LÓGICA: Apenas o capacete é obrigatório
         if (!formData.epi.helmet) {
             setError('O uso de CAPACETE é obrigatório para qualquer visitante no canteiro.');
             return;
@@ -164,7 +167,10 @@ const VisitorsView: React.FC<VisitorsViewProps> = ({ addVisitor }) => {
                     </div>
                 </fieldset>
 
-                <CameraCapture key={cameraKey} title="Foto do Visitante *" onCapture={handlePhotoCapture} />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <CameraCapture key={`vphoto-${cameraKey}`} title="Foto do Visitante *" onCapture={handlePhotoCapture} />
+                  <CameraCapture key={`pphoto-${cameraKey}`} title="Foto da Placa (Se houver)" onCapture={handlePlatePhotoCapture} />
+                </div>
 
                 <div className="flex flex-col sm:flex-row gap-4 pt-4 border-t border-brand-steel">
                     <button type="button" onClick={handleClear} className="w-full bg-brand-steel hover:bg-brand-slate text-white font-black py-4 rounded-xl transition-all uppercase text-[10px] tracking-widest">

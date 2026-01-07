@@ -94,7 +94,7 @@ const App: React.FC = () => {
       const { data: vData } = await vQuery.order('entry_time', { ascending: false });
       const { data: dData } = await dQuery.order('entry_time', { ascending: false });
       
-      if (vData) setVisitors(vData.map(v => ({ ...v, workId: v.obra_id, entryTime: new Date(v.entry_time), exitTime: v.exit_time ? new Date(v.exit_time) : undefined, epi: { helmet: v.helmet, boots: v.boots, glasses: v.glasses }, vehicle: { model: v.vehicle_model, color: v.vehicle_color, plate: v.vehicle_plate }, visitReason: v.visit_reason, personVisited: v.person_visited })));
+      if (vData) setVisitors(vData.map(v => ({ ...v, workId: v.obra_id, entryTime: new Date(v.entry_time), exitTime: v.exit_time ? new Date(v.exit_time) : undefined, platePhoto: v.plate_photo, epi: { helmet: v.helmet, boots: v.boots, glasses: v.glasses }, vehicle: { model: v.vehicle_model, color: v.vehicle_color, plate: v.vehicle_plate }, visitReason: v.visit_reason, personVisited: v.person_visited })));
       if (dData) setDeliveries(dData.map(d => ({ ...d, workId: d.obra_id, entryTime: new Date(d.entry_time), exitTime: d.exit_time ? new Date(d.exit_time) : undefined, invoicePhoto: d.invoice_photo, platePhoto: d.plate_photo, driverName: d.driver_name, driverDocument: d.driver_document, invoiceNumber: d.invoice_number, licensePlate: d.license_plate })));
     } catch (err) {
       console.error("Erro ao carregar dados:", err);
@@ -113,6 +113,18 @@ const App: React.FC = () => {
     const table = type === 'visitor' ? 'visitors' : 'deliveries';
     const { error } = await supabase.from(table).update({ exit_time: new Date().toISOString() }).eq('id', id);
     if (error) showToast(error.message, 'error'); else { await fetchData(); showToast("Saída registrada!"); }
+  }, [fetchData]);
+
+  const updateRecord = useCallback(async (type: 'visitor' | 'delivery', id: number, data: any) => {
+      const table = type === 'visitor' ? 'visitors' : 'deliveries';
+      const { error } = await supabase.from(table).update(data).eq('id', id);
+      if (error) {
+          showToast(error.message, 'error');
+          return false;
+      }
+      await fetchData();
+      showToast("Registro atualizado com sucesso!");
+      return true;
   }, [fetchData]);
 
   const handleLogout = async () => {
@@ -165,7 +177,6 @@ const App: React.FC = () => {
         {activeTab === 'Painel' && <DashboardView visitors={visitors} deliveries={deliveries} onMarkExitRequest={markExit} onNavigateToReports={(t) => { setReportType(t); setActiveTab('Relatorios'); }} />}
         
         {activeTab === 'Entregas' && <DeliveriesView addDelivery={async (d) => {
-            // MAPEAMENTO EXPLÍCITO PARA O BANCO (SNAKE_CASE)
             const payload = {
                 supplier: d.supplier,
                 driver_name: d.driverName,
@@ -183,7 +194,6 @@ const App: React.FC = () => {
         }} />}
 
         {activeTab === 'Visitantes' && <VisitorsView addVisitor={async (v) => {
-            // MAPEAMENTO EXPLÍCITO PARA O BANCO (SNAKE_CASE)
             const payload = {
                 name: v.name,
                 document: v.document,
@@ -191,6 +201,7 @@ const App: React.FC = () => {
                 visit_reason: v.visitReason,
                 person_visited: v.personVisited,
                 photo: v.photo,
+                plate_photo: v.platePhoto,
                 helmet: v.epi.helmet,
                 boots: v.epi.boots,
                 glasses: v.epi.glasses,
@@ -206,7 +217,7 @@ const App: React.FC = () => {
         }} />}
 
         {activeTab === 'Saida' && <ExitView visitors={visitors} deliveries={deliveries} onMarkExitRequest={markExit} />}
-        {activeTab === 'Relatorios' && <ReportsView visitors={visitors} deliveries={deliveries} activeReportType={reportType} onReportTypeChange={setReportType} />}
+        {activeTab === 'Relatorios' && <ReportsView visitors={visitors} deliveries={deliveries} activeReportType={reportType} onReportTypeChange={setReportType} onUpdateRecord={updateRecord} />}
         {activeTab === 'Gestao' && isAdmin && <AdminView onRefresh={() => { fetchProfile(session.user.id); fetchData(); }} />}
       </main>
 

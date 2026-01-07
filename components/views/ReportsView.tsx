@@ -3,13 +3,15 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { Visitor, Delivery } from '../../types';
 import Modal from '../Modal';
 import { exportToCsv } from '../../services/csvExporter';
-import { ExportIcon, TruckIcon, UserIcon, SearchIcon, HelmetIcon, BootsIcon, GlassesIcon, CheckCircleIcon, XCircleIcon, ReportsIcon } from '../icons';
+import { ExportIcon, TruckIcon, UserIcon, SearchIcon, HelmetIcon, BootsIcon, GlassesIcon, CheckCircleIcon, XCircleIcon, ReportsIcon, PencilIcon } from '../icons';
+import { formatDocument } from '../../utils/formatters';
 
 interface ReportsViewProps {
     visitors: Visitor[];
     deliveries: Delivery[];
     activeReportType?: 'deliveries' | 'visitors';
     onReportTypeChange?: (type: 'deliveries' | 'visitors') => void;
+    onUpdateRecord: (type: 'visitor' | 'delivery', id: number, data: any) => Promise<boolean>;
 }
 
 const EmptyState: React.FC = () => (
@@ -36,12 +38,18 @@ const EpiStatus: React.FC<{ epi: Visitor['epi'] }> = ({ epi }) => (
 );
 
 
-const ReportsView: React.FC<ReportsViewProps> = ({ visitors, deliveries, activeReportType = 'visitors', onReportTypeChange }) => {
+const ReportsView: React.FC<ReportsViewProps> = ({ visitors, deliveries, activeReportType = 'visitors', onReportTypeChange, onUpdateRecord }) => {
     const [reportType, setReportType] = useState<'deliveries' | 'visitors'>(activeReportType);
     const [isPhotoModalOpen, setIsPhotoModalOpen] = useState(false);
     const [photoModalUrl, setPhotoModalUrl] = useState('');
     const [searchTerm, setSearchTerm] = useState('');
     
+    // Estados para Edição
+    const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+    const [editingRecord, setEditingRecord] = useState<any>(null);
+    const [editFormData, setEditFormData] = useState<any>({});
+    const [isUpdating, setIsUpdating] = useState(false);
+
     // Filtros de Data
     const [startDate, setStartDate] = useState(() => {
         const d = new Date();
@@ -68,6 +76,57 @@ const ReportsView: React.FC<ReportsViewProps> = ({ visitors, deliveries, activeR
         if (onReportTypeChange) onReportTypeChange(type);
     };
 
+    const handleEditClick = (item: any) => {
+        setEditingRecord(item);
+        if (reportType === 'visitors') {
+            setEditFormData({
+                name: item.name,
+                document: item.document,
+                company: item.company,
+                visit_reason: item.visitReason,
+                person_visited: item.personVisited,
+                vehicle_model: item.vehicle.model,
+                vehicle_color: item.vehicle.color,
+                vehicle_plate: item.vehicle.plate,
+                helmet: item.epi.helmet,
+                boots: item.epi.boots,
+                glasses: item.epi.glasses,
+            });
+        } else {
+            setEditFormData({
+                supplier: item.supplier,
+                driver_name: item.driverName,
+                driver_document: item.driverDocument,
+                invoice_number: item.invoiceNumber,
+                license_plate: item.licensePlate,
+            });
+        }
+        setIsEditModalOpen(true);
+    };
+
+    const handleEditInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const { name, value, checked, type } = e.target;
+        setEditFormData(prev => ({ 
+            ...prev, 
+            [name]: type === 'checkbox' ? checked : value.toUpperCase() 
+        }));
+    };
+
+    const handleSaveEdit = async () => {
+        setIsUpdating(true);
+        const type = reportType === 'visitors' ? 'visitor' : 'delivery';
+        
+        // Garantimos que o payload enviado use snake_case se for visitante (para evitar erros de banco)
+        let payload = { ...editFormData };
+        
+        const success = await onUpdateRecord(type, editingRecord.id, payload);
+        if (success) {
+            setIsEditModalOpen(false);
+            setEditingRecord(null);
+        }
+        setIsUpdating(false);
+    };
+
     const filteredData = useMemo(() => {
         const data = reportType === 'visitors' ? visitors : deliveries;
         const start = new Date(startDate);
@@ -76,11 +135,9 @@ const ReportsView: React.FC<ReportsViewProps> = ({ visitors, deliveries, activeR
         end.setHours(23,59,59,999);
 
         return data.filter(item => {
-            // Filtro de Data
             const itemDate = new Date(item.entryTime);
             if (itemDate < start || itemDate > end) return false;
 
-            // Filtro de Busca
             if (!searchTerm) return true;
             const lowerSearch = searchTerm.toLowerCase();
             if (reportType === 'visitors') {
@@ -99,7 +156,6 @@ const ReportsView: React.FC<ReportsViewProps> = ({ visitors, deliveries, activeR
 
     }, [reportType, searchTerm, startDate, endDate, visitors, deliveries]);
 
-    // Exportar respeitando o filtro
     const handleExport = () => {
         const start = new Date(startDate);
         start.setHours(0,0,0,0);
@@ -122,7 +178,6 @@ const ReportsView: React.FC<ReportsViewProps> = ({ visitors, deliveries, activeR
         <div className="p-4 sm:p-6 md:p-8 animate-in slide-in-from-bottom-4 duration-500">
             <div className="max-w-4xl mx-auto space-y-6">
                 
-                {/* Header e Filtros */}
                 <header className="bg-brand-lead p-6 rounded-3xl border border-brand-steel shadow-2xl space-y-6">
                     <div className="flex flex-col md:flex-row justify-between items-center gap-6">
                         <div className="flex bg-brand-charcoal p-1.5 rounded-2xl border border-brand-steel w-full md:w-auto">
@@ -144,7 +199,6 @@ const ReportsView: React.FC<ReportsViewProps> = ({ visitors, deliveries, activeR
                         </button>
                     </div>
 
-                    {/* Controles de Data */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 border-t border-brand-steel/50 pt-6">
                         <div className="space-y-1">
                             <label className="text-[9px] font-black text-brand-text-muted uppercase ml-1">De (Entrada)</label>
@@ -180,7 +234,6 @@ const ReportsView: React.FC<ReportsViewProps> = ({ visitors, deliveries, activeR
                     </div>
                 </header>
 
-                {/* Lista de Resultados */}
                 <div className="space-y-4">
                     <div className="flex items-center justify-between px-2">
                         <p className="text-[10px] font-black text-brand-text-muted uppercase tracking-widest">
@@ -192,23 +245,38 @@ const ReportsView: React.FC<ReportsViewProps> = ({ visitors, deliveries, activeR
                         <div className="grid grid-cols-1 gap-4">
                             {filteredData.map(item => (
                                 <div key={item.id} className="bg-brand-lead p-5 rounded-3xl shadow-xl relative border border-brand-steel hover:border-brand-slate transition-all group overflow-hidden">
-                                    {item.exitTime && (
-                                        <div className="absolute top-0 right-0">
+                                    <div className="absolute top-4 right-4 flex gap-2 z-10">
+                                        <button 
+                                          onClick={() => handleEditClick(item)}
+                                          className="p-2 bg-brand-charcoal hover:bg-brand-slate text-brand-amber rounded-full shadow-lg border border-brand-steel transition-all active:scale-90"
+                                          title="Editar Registro"
+                                        >
+                                          <PencilIcon className="h-4 w-4" />
+                                        </button>
+                                        {item.exitTime && (
                                             <div className="bg-feedback-success text-brand-charcoal text-[7px] font-black px-4 py-1.5 uppercase tracking-widest shadow-lg -rotate-12 translate-x-3 -translate-y-1">SAÍDA</div>
-                                        </div>
-                                    )}
+                                        )}
+                                    </div>
                                     
                                     {reportType === 'visitors' && (
                                         <div className="flex flex-col sm:flex-row gap-6">
-                                            <div className="relative flex-shrink-0">
+                                            <div className="relative flex-shrink-0 flex gap-2">
                                                 <img 
                                                   src={(item as Visitor).photo} 
                                                   alt={(item as Visitor).name} 
                                                   className="w-24 h-24 rounded-2xl object-cover cursor-pointer ring-4 ring-brand-charcoal shadow-2xl group-hover:scale-105 transition-transform" 
                                                   onClick={() => handleViewPhoto((item as Visitor).photo)} 
                                                 />
+                                                {(item as Visitor).platePhoto && (
+                                                    <img 
+                                                      src={(item as Visitor).platePhoto} 
+                                                      alt="Placa" 
+                                                      className="w-24 h-24 rounded-2xl object-cover cursor-pointer ring-4 ring-brand-charcoal shadow-2xl group-hover:scale-105 transition-transform" 
+                                                      onClick={() => handleViewPhoto((item as Visitor).platePhoto!)} 
+                                                    />
+                                                )}
                                             </div>
-                                            <div className="flex-grow">
+                                            <div className="flex-grow pt-2">
                                                 <h3 className="font-black text-lg text-brand-amber uppercase leading-none mb-2">{(item as Visitor).name}</h3>
                                                 <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[10px] font-bold">
                                                     <p className="text-brand-text-muted">DOC: <span className="text-brand-text uppercase">{(item as Visitor).document}</span></p>
@@ -239,7 +307,7 @@ const ReportsView: React.FC<ReportsViewProps> = ({ visitors, deliveries, activeR
                                                 <img src={(item as Delivery).invoicePhoto} className="w-20 h-24 rounded-xl object-cover cursor-pointer ring-4 ring-brand-charcoal shadow-2xl group-hover:-rotate-3 transition-transform" onClick={() => handleViewPhoto((item as Delivery).invoicePhoto)}/>
                                                 <img src={(item as Delivery).platePhoto} className="w-20 h-24 rounded-xl object-cover cursor-pointer ring-4 ring-brand-charcoal shadow-2xl group-hover:rotate-3 transition-transform" onClick={() => handleViewPhoto((item as Delivery).platePhoto)} />
                                              </div>
-                                            <div className="flex-grow">
+                                            <div className="flex-grow pt-2">
                                                  <h3 className="font-black text-lg text-brand-blue uppercase leading-none mb-2">{(item as Delivery).supplier}</h3>
                                                  <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[10px] font-bold">
                                                      <p className="text-brand-text-muted">MOTORA: <span className="text-brand-text uppercase">{(item as Delivery).driverName}</span></p>
@@ -272,6 +340,96 @@ const ReportsView: React.FC<ReportsViewProps> = ({ visitors, deliveries, activeR
             <Modal isOpen={isPhotoModalOpen} onClose={() => setIsPhotoModalOpen(false)} title="Evidência Fotográfica">
                 <div className="p-1">
                     <img src={photoModalUrl} alt="Visualização ampliada" className="w-full h-auto rounded-2xl shadow-2xl border-4 border-brand-charcoal" />
+                </div>
+            </Modal>
+
+            <Modal isOpen={isEditModalOpen} onClose={() => setIsEditModalOpen(false)} title="Editar Registro">
+                <div className="space-y-4 max-h-[70vh] overflow-y-auto p-1 custom-scrollbar">
+                    {reportType === 'visitors' ? (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="md:col-span-2">
+                                <label className="text-[9px] font-black uppercase text-brand-text-muted">Nome do Visitante</label>
+                                <input name="name" value={editFormData.name} onChange={handleEditInputChange} className="w-full bg-brand-steel border-brand-slate border rounded-xl py-2 px-3 text-xs text-brand-text outline-none focus:border-brand-amber" />
+                            </div>
+                            <div>
+                                <label className="text-[9px] font-black uppercase text-brand-text-muted">Documento (RG/CPF)</label>
+                                <input name="document" value={editFormData.document} onChange={handleEditInputChange} className="w-full bg-brand-steel border-brand-slate border rounded-xl py-2 px-3 text-xs text-brand-text outline-none focus:border-brand-amber" />
+                            </div>
+                            <div>
+                                <label className="text-[9px] font-black uppercase text-brand-text-muted">Empresa</label>
+                                <input name="company" value={editFormData.company} onChange={handleEditInputChange} className="w-full bg-brand-steel border-brand-slate border rounded-xl py-2 px-3 text-xs text-brand-text outline-none focus:border-brand-amber" />
+                            </div>
+                            <div>
+                                <label className="text-[9px] font-black uppercase text-brand-text-muted">Motivo da Visita</label>
+                                <input name="visit_reason" value={editFormData.visit_reason} onChange={handleEditInputChange} className="w-full bg-brand-steel border-brand-slate border rounded-xl py-2 px-3 text-xs text-brand-text outline-none focus:border-brand-amber" />
+                            </div>
+                            <div>
+                                <label className="text-[9px] font-black uppercase text-brand-text-muted">Responsável</label>
+                                <input name="person_visited" value={editFormData.person_visited} onChange={handleEditInputChange} className="w-full bg-brand-steel border-brand-slate border rounded-xl py-2 px-3 text-xs text-brand-text outline-none focus:border-brand-amber" />
+                            </div>
+                            <div className="md:col-span-2 grid grid-cols-3 gap-2 border-t border-brand-steel pt-4">
+                                 <label className="flex items-center gap-2 cursor-pointer">
+                                    <input type="checkbox" name="helmet" checked={editFormData.helmet} onChange={handleEditInputChange} className="h-4 w-4" />
+                                    <span className="text-[9px] font-black uppercase">Capacete</span>
+                                 </label>
+                                 <label className="flex items-center gap-2 cursor-pointer">
+                                    <input type="checkbox" name="boots" checked={editFormData.boots} onChange={handleEditInputChange} className="h-4 w-4" />
+                                    <span className="text-[9px] font-black uppercase">Botina</span>
+                                 </label>
+                                 <label className="flex items-center gap-2 cursor-pointer">
+                                    <input type="checkbox" name="glasses" checked={editFormData.glasses} onChange={handleEditInputChange} className="h-4 w-4" />
+                                    <span className="text-[9px] font-black uppercase">Óculos</span>
+                                 </label>
+                            </div>
+                            <div>
+                                <label className="text-[9px] font-black uppercase text-brand-text-muted">Modelo/Cor Veículo</label>
+                                <input name="vehicle_model" value={editFormData.vehicle_model} onChange={handleEditInputChange} className="w-full bg-brand-steel border-brand-slate border rounded-xl py-2 px-3 text-xs text-brand-text outline-none focus:border-brand-amber" />
+                            </div>
+                            <div>
+                                <label className="text-[9px] font-black uppercase text-brand-text-muted">Placa</label>
+                                <input name="vehicle_plate" value={editFormData.vehicle_plate} onChange={handleEditInputChange} className="w-full bg-brand-steel border-brand-slate border rounded-xl py-2 px-3 text-xs text-brand-text outline-none focus:border-brand-amber font-mono" />
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="md:col-span-2">
+                                <label className="text-[9px] font-black uppercase text-brand-text-muted">Fornecedor</label>
+                                <input name="supplier" value={editFormData.supplier} onChange={handleEditInputChange} className="w-full bg-brand-steel border-brand-slate border rounded-xl py-2 px-3 text-xs text-brand-text outline-none focus:border-brand-blue" />
+                            </div>
+                            <div>
+                                <label className="text-[9px] font-black uppercase text-brand-text-muted">Nome do Motorista</label>
+                                <input name="driver_name" value={editFormData.driver_name} onChange={handleEditInputChange} className="w-full bg-brand-steel border-brand-slate border rounded-xl py-2 px-3 text-xs text-brand-text outline-none focus:border-brand-blue" />
+                            </div>
+                            <div>
+                                <label className="text-[9px] font-black uppercase text-brand-text-muted">Documento Motorista</label>
+                                <input name="driver_document" value={editFormData.driver_document} onChange={handleEditInputChange} className="w-full bg-brand-steel border-brand-slate border rounded-xl py-2 px-3 text-xs text-brand-text outline-none focus:border-brand-blue" />
+                            </div>
+                            <div>
+                                <label className="text-[9px] font-black uppercase text-brand-text-muted">Número Nota Fiscal</label>
+                                <input name="invoice_number" value={editFormData.invoice_number} onChange={handleEditInputChange} className="w-full bg-brand-steel border-brand-slate border rounded-xl py-2 px-3 text-xs text-brand-text outline-none focus:border-brand-blue" />
+                            </div>
+                            <div>
+                                <label className="text-[9px] font-black uppercase text-brand-text-muted">Placa do Veículo</label>
+                                <input name="license_plate" value={editFormData.license_plate} onChange={handleEditInputChange} className="w-full bg-brand-steel border-brand-slate border rounded-xl py-2 px-3 text-xs text-brand-text outline-none focus:border-brand-blue font-mono" />
+                            </div>
+                        </div>
+                    )}
+
+                    <div className="flex gap-4 pt-6 border-t border-brand-steel">
+                         <button 
+                            onClick={() => setIsEditModalOpen(false)}
+                            className="flex-1 py-4 bg-brand-steel hover:bg-brand-slate text-white font-black uppercase text-[10px] rounded-xl transition-colors"
+                        >
+                            Cancelar
+                        </button>
+                        <button 
+                            disabled={isUpdating}
+                            onClick={handleSaveEdit}
+                            className={`flex-1 py-4 text-brand-charcoal font-black uppercase text-[10px] rounded-xl shadow-lg transition-all active:scale-95 ${reportType === 'visitors' ? 'bg-brand-amber' : 'bg-brand-blue'} disabled:opacity-50`}
+                        >
+                            {isUpdating ? 'Salvando...' : 'Confirmar Alterações'}
+                        </button>
+                    </div>
                 </div>
             </Modal>
         </div>

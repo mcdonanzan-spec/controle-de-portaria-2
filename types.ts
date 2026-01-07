@@ -24,6 +24,7 @@ export interface Visitor {
   visitReason: string;
   personVisited: string;
   photo: string;
+  platePhoto?: string;
   entryTime: Date;
   exitTime?: Date;
   epi: {
