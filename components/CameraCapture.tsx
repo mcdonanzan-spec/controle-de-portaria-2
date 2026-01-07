@@ -1,3 +1,4 @@
+
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { CameraIcon, XCircleIcon } from './icons';
 
@@ -14,6 +15,7 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({ onCapture, title }) => {
   const [isStreamLoading, setIsStreamLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
+  const [resInfo, setResInfo] = useState<string>("");
 
   const stopCamera = useCallback(() => {
     if (streamRef.current) {
@@ -34,9 +36,10 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({ onCapture, title }) => {
     const handleLoadedMetadata = () => {
       videoElement.play().catch(err => {
         console.error("Video play failed:", err);
-        setError("Não foi possível iniciar o vídeo. A interação do usuário pode ser necessária.");
+        setError("Não foi possível iniciar o vídeo.");
       });
       setIsStreamLoading(false);
+      setResInfo(`${videoElement.videoWidth}x${videoElement.videoHeight}`);
     };
 
     videoElement.addEventListener('loadedmetadata', handleLoadedMetadata);
@@ -57,18 +60,24 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({ onCapture, title }) => {
     let stream: MediaStream | null = null;
     let lastError: Error | null = null;
 
+    // Reduzido para Full HD (1080p) - Equilíbrio entre nitidez e peso de rede
+    const optimalConstraints = { 
+      video: { 
+        facingMode: { ideal: 'environment' },
+        width: { ideal: 1920, min: 1280 }, 
+        height: { ideal: 1080, min: 720 }
+      } 
+    };
+
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } } });
+      stream = await navigator.mediaDevices.getUserMedia(optimalConstraints);
     } catch (err) {
       lastError = err as Error;
-      if (err instanceof Error && (err.name === "OverconstrainedError" || err.name === "NotFoundError")) {
-        console.log("Câmera traseira falhou, tentando qualquer câmera disponível...");
-        try {
-          stream = await navigator.mediaDevices.getUserMedia({ video: true });
-          lastError = null; 
-        } catch (fallbackErr) {
-          lastError = fallbackErr as Error;
-        }
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        lastError = null; 
+      } catch (fallbackErr) {
+        lastError = fallbackErr as Error;
       }
     }
     
@@ -76,15 +85,7 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({ onCapture, title }) => {
       videoRef.current.srcObject = stream;
       streamRef.current = stream;
     } else {
-      let errorMessage = "Câmera não disponível. Verifique as permissões.";
-      if (lastError) {
-          if (lastError.name === "NotAllowedError" || lastError.name === "PermissionDeniedError") {
-              errorMessage = "Permissão da câmera negada. Habilite nas configurações do seu navegador.";
-          } else if (lastError.name === "NotFoundError" || lastError.name === "DevicesNotFoundError") {
-              errorMessage = "Nenhuma câmera encontrada no dispositivo.";
-          }
-      }
-      setError(errorMessage);
+      setError("Câmera não disponível ou permissão negada.");
       stopCamera();
     }
   }, [isCameraOn, stopCamera]);
@@ -96,16 +97,21 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({ onCapture, title }) => {
     const canvas = canvasRef.current;
 
     if (video.readyState < video.HAVE_METADATA || video.videoWidth === 0) {
-      setError("A câmera ainda não está pronta. Por favor, aguarde.");
+      setError("A câmera não está pronta.");
       return;
     }
     
+    // Mantemos a proporção nativa para não distorcer o documento
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
-    const context = canvas.getContext('2d');
+    const context = canvas.getContext('2d', { alpha: false });
+    
     if (context) {
       context.drawImage(video, 0, 0, canvas.width, canvas.height);
-      const imageDataUrl = canvas.toDataURL('image/jpeg', 0.9);
+      
+      // Qualidade 0.8 (reduz 90% do tamanho do arquivo mantendo 95% da nitidez)
+      // Ideal para uploads em redes móveis (3G/4G)
+      const imageDataUrl = canvas.toDataURL('image/jpeg', 0.8);
       setCapturedImage(imageDataUrl);
       onCapture(imageDataUrl);
       stopCamera();
@@ -124,47 +130,51 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({ onCapture, title }) => {
   };
 
   return (
-    <div className="mb-4 p-4 border border-brand-steel rounded-lg bg-brand-slate text-center">
-      <h4 className="text-lg font-semibold mb-2 text-brand-text">{title}</h4>
-      {error && <p className="text-feedback-error mb-2 text-sm text-center bg-red-900/50 p-2 rounded-md">{error}</p>}
+    <div className="mb-4 p-4 border border-brand-steel rounded-2xl bg-brand-charcoal/50 text-center">
+      <div className="flex justify-between items-center mb-3">
+        <h4 className="text-[10px] font-black uppercase tracking-widest text-brand-text-muted">{title}</h4>
+        {isCameraOn && resInfo && <span className="text-[8px] text-brand-amber font-mono bg-brand-amber/10 px-2 py-0.5 rounded">{resInfo}</span>}
+      </div>
       
-      <div className="w-full max-w-sm mx-auto bg-black rounded-md overflow-hidden mb-2 relative aspect-video flex items-center justify-center">
+      {error && <p className="text-feedback-error mb-2 text-[10px] font-bold uppercase">{error}</p>}
+      
+      <div className="w-full mx-auto bg-black rounded-xl overflow-hidden mb-3 relative aspect-video flex items-center justify-center border border-brand-steel group">
         {isCameraOn ? (
           <>
-            <video ref={videoRef} autoPlay playsInline muted className={`w-full h-auto transition-opacity duration-300 ${isStreamLoading ? 'opacity-0' : 'opacity-100'}`} />
-            {isStreamLoading && <div className="absolute text-white animate-pulse">Iniciando câmera...</div>}
+            <video ref={videoRef} autoPlay playsInline muted className={`w-full h-full object-cover transition-opacity duration-300 ${isStreamLoading ? 'opacity-0' : 'opacity-100'}`} />
+            {isStreamLoading && <div className="absolute inset-0 flex items-center justify-center bg-brand-charcoal text-[9px] text-brand-amber font-black animate-pulse uppercase tracking-widest">Ajustando foco...</div>}
+            <div className="absolute inset-4 border border-white/20 pointer-events-none rounded-lg"></div>
           </>
         ) : capturedImage ? (
-          <img src={capturedImage} alt="Captura" className="w-full h-auto object-cover" />
+          <img src={capturedImage} alt="Captura" className="w-full h-full object-cover" />
         ) : (
-          <div className="text-brand-text-muted flex flex-col items-center">
-            <CameraIcon className="w-12 h-12" />
-            <p>Câmera desligada</p>
+          <div className="text-brand-text-muted flex flex-col items-center opacity-30 group-hover:opacity-50 transition-opacity">
+            <CameraIcon className="w-10 h-10 mb-2" />
+            <p className="text-[8px] font-black uppercase tracking-widest">Lente Bloqueada</p>
           </div>
         )}
       </div>
 
       <div className="flex flex-col gap-2">
         {isCameraOn ? (
-          <div className="flex flex-col sm:flex-row gap-2">
-            <button type="button" onClick={handleCapture} disabled={isStreamLoading} className="w-full bg-brand-amber hover:bg-opacity-80 text-brand-charcoal font-bold py-2 px-4 rounded-md inline-flex items-center justify-center transition-colors disabled:bg-brand-slate disabled:cursor-not-allowed">
-              <CameraIcon className="w-5 h-5 mr-2" />
-              {isStreamLoading ? 'Aguarde...' : 'Tirar Foto'}
+          <div className="flex gap-2">
+            <button type="button" onClick={handleCapture} disabled={isStreamLoading} className="flex-1 bg-brand-amber hover:scale-[1.02] text-brand-charcoal font-black py-3 rounded-xl inline-flex items-center justify-center transition-all disabled:opacity-50 text-[10px] uppercase tracking-widest shadow-lg">
+              <CameraIcon className="w-4 h-4 mr-2" />
+              Bater Foto
             </button>
-            <button type="button" onClick={stopCamera} className="w-full sm:w-auto bg-brand-steel hover:bg-opacity-80 text-white font-bold py-2 px-4 rounded-md inline-flex items-center justify-center transition-colors">
-                <XCircleIcon className="w-5 h-5 sm:mr-2" />
-                <span className="hidden sm:inline">Cancelar</span>
+            <button type="button" onClick={stopCamera} className="px-4 bg-brand-steel text-white font-black py-3 rounded-xl text-[10px] uppercase">
+              X
             </button>
           </div>
         ) : capturedImage ? (
-          <button type="button" onClick={handleRetake} className="w-full bg-brand-steel hover:bg-opacity-80 text-white font-bold py-2 px-4 rounded-md inline-flex items-center justify-center transition-colors">
-            <CameraIcon className="w-5 h-5 mr-2" />
+          <button type="button" onClick={handleRetake} className="w-full bg-brand-steel border border-brand-slate text-brand-text font-black py-3 rounded-xl inline-flex items-center justify-center transition-all text-[10px] uppercase tracking-widest">
+            <CameraIcon className="w-4 h-4 mr-2" />
             Alterar Foto
           </button>
         ) : (
-          <button type="button" onClick={startCamera} className="w-full bg-brand-blue hover:bg-opacity-80 text-white font-bold py-2 px-4 rounded-md inline-flex items-center justify-center transition-colors">
-            <CameraIcon className="w-5 h-5 mr-2" />
-            Capturar Foto
+          <button type="button" onClick={startCamera} className="w-full bg-brand-steel hover:bg-brand-slate text-white font-black py-3 rounded-xl inline-flex items-center justify-center transition-all text-[10px] uppercase tracking-widest">
+            <CameraIcon className="w-4 h-4 mr-2" />
+            Abrir Câmera
           </button>
         )}
       </div>

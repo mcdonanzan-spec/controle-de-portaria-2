@@ -94,7 +94,7 @@ const App: React.FC = () => {
       const { data: vData } = await vQuery.order('entry_time', { ascending: false });
       const { data: dData } = await dQuery.order('entry_time', { ascending: false });
       
-      if (vData) setVisitors(vData.map(v => ({ ...v, workId: v.obra_id, entryTime: new Date(v.entry_time), exitTime: v.exit_time ? new Date(v.exit_time) : undefined, platePhoto: v.plate_photo, epi: { helmet: v.helmet, boots: v.boots, glasses: v.glasses }, vehicle: { model: v.vehicle_model, color: v.vehicle_color, plate: v.vehicle_plate }, visitReason: v.visit_reason, personVisited: v.person_visited })));
+      if (vData) setVisitors(vData.map(v => ({ ...v, workId: v.obra_id, entryTime: new Date(v.entry_time), exitTime: v.exit_time ? new Date(v.exit_time) : undefined, platePhoto: v.plate_photo, epi: { helmet: v.helmet, boots: v.boots, glasses: v.glasses }, vehicle: { model: v.vehicle_model, color: v.vehicle_color, plate: v.vehicle_plate }, visitReason: v.visit_reason, person_visited: v.person_visited })));
       if (dData) setDeliveries(dData.map(d => ({ ...d, workId: d.obra_id, entryTime: new Date(d.entry_time), exitTime: d.exit_time ? new Date(d.exit_time) : undefined, invoicePhoto: d.invoice_photo, platePhoto: d.plate_photo, driverName: d.driver_name, driverDocument: d.driver_document, invoiceNumber: d.invoice_number, licensePlate: d.license_plate })));
     } catch (err) {
       console.error("Erro ao carregar dados:", err);
@@ -109,22 +109,43 @@ const App: React.FC = () => {
     setToast({ message, show: true, type });
   };
   
+  const handleSupabaseError = (err: any) => {
+    console.error("Erro detalhado:", err);
+    let msg = err.message || "Erro inesperado ao salvar.";
+    
+    if (msg.includes("plate_photo")) {
+      msg = "ERRO DE BANCO: A coluna 'plate_photo' não foi encontrada em 'visitors'. Por favor, execute o comando SQL no painel do Supabase.";
+    } else if (msg === "Failed to fetch" || msg.includes("network")) {
+      msg = "CONEXÃO FALHOU: Verifique sua internet ou sinal de celular.";
+    }
+    
+    showToast(msg, 'error');
+  };
+
   const markExit = useCallback(async (type: 'visitor' | 'delivery', id: number) => {
     const table = type === 'visitor' ? 'visitors' : 'deliveries';
-    const { error } = await supabase.from(table).update({ exit_time: new Date().toISOString() }).eq('id', id);
-    if (error) showToast(error.message, 'error'); else { await fetchData(); showToast("Saída registrada!"); }
+    try {
+        const { error } = await supabase.from(table).update({ exit_time: new Date().toISOString() }).eq('id', id);
+        if (error) throw error;
+        await fetchData(); 
+        showToast("Saída registrada!");
+    } catch (err) {
+        handleSupabaseError(err);
+    }
   }, [fetchData]);
 
   const updateRecord = useCallback(async (type: 'visitor' | 'delivery', id: number, data: any) => {
       const table = type === 'visitor' ? 'visitors' : 'deliveries';
-      const { error } = await supabase.from(table).update(data).eq('id', id);
-      if (error) {
-          showToast(error.message, 'error');
+      try {
+          const { error } = await supabase.from(table).update(data).eq('id', id);
+          if (error) throw error;
+          await fetchData();
+          showToast("Registro atualizado!");
+          return true;
+      } catch (err) {
+          handleSupabaseError(err);
           return false;
       }
-      await fetchData();
-      showToast("Registro atualizado com sucesso!");
-      return true;
   }, [fetchData]);
 
   const handleLogout = async () => {
@@ -177,31 +198,36 @@ const App: React.FC = () => {
         {activeTab === 'Painel' && <DashboardView visitors={visitors} deliveries={deliveries} onMarkExitRequest={markExit} onNavigateToReports={(t) => { setReportType(t); setActiveTab('Relatorios'); }} />}
         
         {activeTab === 'Entregas' && <DeliveriesView addDelivery={async (d) => {
-            const payload = {
+            const payload: any = {
                 supplier: d.supplier,
                 driver_name: d.driverName,
                 driver_document: d.driverDocument,
                 invoice_number: d.invoiceNumber,
                 license_plate: d.licensePlate,
                 invoice_photo: d.invoicePhoto,
-                plate_photo: d.platePhoto,
                 user_id: session?.user?.id,
                 obra_id: profile?.workId
             };
-            const { error } = await supabase.from('deliveries').insert([payload]);
-            if (error) { showToast(error.message, 'error'); return false; }
-            await fetchData(); showToast('Entrega registrada!'); return true;
+            if (d.platePhoto) payload.plate_photo = d.platePhoto;
+
+            try {
+                const { error } = await supabase.from('deliveries').insert([payload]);
+                if (error) throw error;
+                await fetchData(); showToast('Entrega registrada!'); return true;
+            } catch (err) {
+                handleSupabaseError(err);
+                return false;
+            }
         }} />}
 
         {activeTab === 'Visitantes' && <VisitorsView addVisitor={async (v) => {
-            const payload = {
+            const payload: any = {
                 name: v.name,
                 document: v.document,
                 company: v.company,
                 visit_reason: v.visitReason,
                 person_visited: v.personVisited,
                 photo: v.photo,
-                plate_photo: v.platePhoto,
                 helmet: v.epi.helmet,
                 boots: v.epi.boots,
                 glasses: v.epi.glasses,
@@ -211,9 +237,17 @@ const App: React.FC = () => {
                 user_id: session?.user?.id,
                 obra_id: profile?.workId
             };
-            const { error } = await supabase.from('visitors').insert([payload]);
-            if (error) { showToast(error.message, 'error'); return false; }
-            await fetchData(); showToast('Visitante registrado!'); return true;
+            // Só envia plate_photo se não estiver vazio
+            if (v.platePhoto) payload.plate_photo = v.platePhoto;
+
+            try {
+                const { error } = await supabase.from('visitors').insert([payload]);
+                if (error) throw error;
+                await fetchData(); showToast('Visitante registrado!'); return true;
+            } catch (err) {
+                handleSupabaseError(err);
+                return false;
+            }
         }} />}
 
         {activeTab === 'Saida' && <ExitView visitors={visitors} deliveries={deliveries} onMarkExitRequest={markExit} />}
