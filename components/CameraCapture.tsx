@@ -1,3 +1,4 @@
+
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { CameraIcon, XCircleIcon } from './icons';
 
@@ -14,6 +15,7 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({ onCapture, title }) => {
   const [isStreamLoading, setIsStreamLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
+  const [resInfo, setResInfo] = useState<string>("");
 
   const stopCamera = useCallback(() => {
     if (streamRef.current) {
@@ -37,6 +39,8 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({ onCapture, title }) => {
         setError("Não foi possível iniciar o vídeo. A interação do usuário pode ser necessária.");
       });
       setIsStreamLoading(false);
+      // Informação técnica da resolução para debug silencioso
+      setResInfo(`${videoElement.videoWidth}x${videoElement.videoHeight}`);
     };
 
     videoElement.addEventListener('loadedmetadata', handleLoadedMetadata);
@@ -57,18 +61,25 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({ onCapture, title }) => {
     let stream: MediaStream | null = null;
     let lastError: Error | null = null;
 
+    // Configurações de alta resolução para documentos
+    const highResConstraints = { 
+      video: { 
+        facingMode: { ideal: 'environment' },
+        width: { ideal: 4096, min: 1280 }, // Tenta 4K, mínimo HD
+        height: { ideal: 2160, min: 720 }
+      } 
+    };
+
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } } });
+      stream = await navigator.mediaDevices.getUserMedia(highResConstraints);
     } catch (err) {
       lastError = err as Error;
-      if (err instanceof Error && (err.name === "OverconstrainedError" || err.name === "NotFoundError")) {
-        console.log("Câmera traseira falhou, tentando qualquer câmera disponível...");
-        try {
-          stream = await navigator.mediaDevices.getUserMedia({ video: true });
-          lastError = null; 
-        } catch (fallbackErr) {
-          lastError = fallbackErr as Error;
-        }
+      console.log("Alta resolução falhou, tentando modo padrão...");
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        lastError = null; 
+      } catch (fallbackErr) {
+        lastError = fallbackErr as Error;
       }
     }
     
@@ -100,12 +111,18 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({ onCapture, title }) => {
       return;
     }
     
+    // Captura na resolução máxima do sensor
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
-    const context = canvas.getContext('2d');
+    const context = canvas.getContext('2d', { alpha: false }); // alpha false ajuda na performance e nitidez
+    
     if (context) {
+      // Garantir máxima nitidez
+      context.imageSmoothingEnabled = false;
       context.drawImage(video, 0, 0, canvas.width, canvas.height);
-      const imageDataUrl = canvas.toDataURL('image/jpeg', 0.9);
+      
+      // Qualidade máxima (1.0) para documentos legíveis
+      const imageDataUrl = canvas.toDataURL('image/jpeg', 1.0);
       setCapturedImage(imageDataUrl);
       onCapture(imageDataUrl);
       stopCamera();
@@ -125,14 +142,21 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({ onCapture, title }) => {
 
   return (
     <div className="mb-4 p-4 border border-brand-steel rounded-lg bg-brand-slate text-center">
-      <h4 className="text-lg font-semibold mb-2 text-brand-text">{title}</h4>
+      <div className="flex justify-between items-center mb-2">
+        <h4 className="text-lg font-semibold text-brand-text">{title}</h4>
+        {isCameraOn && resInfo && <span className="text-[8px] text-brand-text-muted font-mono">{resInfo}</span>}
+      </div>
+      
       {error && <p className="text-feedback-error mb-2 text-sm text-center bg-red-900/50 p-2 rounded-md">{error}</p>}
       
       <div className="w-full max-w-sm mx-auto bg-black rounded-md overflow-hidden mb-2 relative aspect-video flex items-center justify-center">
         {isCameraOn ? (
           <>
             <video ref={videoRef} autoPlay playsInline muted className={`w-full h-auto transition-opacity duration-300 ${isStreamLoading ? 'opacity-0' : 'opacity-100'}`} />
-            {isStreamLoading && <div className="absolute text-white animate-pulse">Iniciando câmera...</div>}
+            {isStreamLoading && <div className="absolute text-white animate-pulse">Iniciando câmera de alta definição...</div>}
+            <div className="absolute inset-0 border-2 border-dashed border-white/20 pointer-events-none flex items-center justify-center">
+               <span className="text-[10px] text-white/40 uppercase font-black">Enquadre o documento aqui</span>
+            </div>
           </>
         ) : capturedImage ? (
           <img src={capturedImage} alt="Captura" className="w-full h-auto object-cover" />
@@ -149,7 +173,7 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({ onCapture, title }) => {
           <div className="flex flex-col sm:flex-row gap-2">
             <button type="button" onClick={handleCapture} disabled={isStreamLoading} className="w-full bg-brand-amber hover:bg-opacity-80 text-brand-charcoal font-bold py-2 px-4 rounded-md inline-flex items-center justify-center transition-colors disabled:bg-brand-slate disabled:cursor-not-allowed">
               <CameraIcon className="w-5 h-5 mr-2" />
-              {isStreamLoading ? 'Aguarde...' : 'Tirar Foto'}
+              {isStreamLoading ? 'Aguarde...' : 'Capturar Documento'}
             </button>
             <button type="button" onClick={stopCamera} className="w-full sm:w-auto bg-brand-steel hover:bg-opacity-80 text-white font-bold py-2 px-4 rounded-md inline-flex items-center justify-center transition-colors">
                 <XCircleIcon className="w-5 h-5 sm:mr-2" />
@@ -159,12 +183,12 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({ onCapture, title }) => {
         ) : capturedImage ? (
           <button type="button" onClick={handleRetake} className="w-full bg-brand-steel hover:bg-opacity-80 text-white font-bold py-2 px-4 rounded-md inline-flex items-center justify-center transition-colors">
             <CameraIcon className="w-5 h-5 mr-2" />
-            Alterar Foto
+            Refazer Foto (Alta Qualidade)
           </button>
         ) : (
           <button type="button" onClick={startCamera} className="w-full bg-brand-blue hover:bg-opacity-80 text-white font-bold py-2 px-4 rounded-md inline-flex items-center justify-center transition-colors">
             <CameraIcon className="w-5 h-5 mr-2" />
-            Capturar Foto
+            Ativar Câmera HD
           </button>
         )}
       </div>
