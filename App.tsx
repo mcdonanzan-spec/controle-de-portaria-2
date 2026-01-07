@@ -109,39 +109,22 @@ const App: React.FC = () => {
     setToast({ message, show: true, type });
   };
   
-  const handleSupabaseError = (err: any) => {
-    console.error("Erro Supabase:", err);
-    if (err.message === "Failed to fetch" || err.message?.includes("network")) {
-        showToast("SEM CONEXÃO: Verifique sua internet.", 'error');
-    } else {
-        showToast(err.message || "Erro ao salvar dados.", 'error');
-    }
-  };
-
   const markExit = useCallback(async (type: 'visitor' | 'delivery', id: number) => {
     const table = type === 'visitor' ? 'visitors' : 'deliveries';
-    try {
-        const { error } = await supabase.from(table).update({ exit_time: new Date().toISOString() }).eq('id', id);
-        if (error) throw error;
-        await fetchData(); 
-        showToast("Saída registrada!");
-    } catch (err) {
-        handleSupabaseError(err);
-    }
+    const { error } = await supabase.from(table).update({ exit_time: new Date().toISOString() }).eq('id', id);
+    if (error) showToast(error.message, 'error'); else { await fetchData(); showToast("Saída registrada!"); }
   }, [fetchData]);
 
   const updateRecord = useCallback(async (type: 'visitor' | 'delivery', id: number, data: any) => {
       const table = type === 'visitor' ? 'visitors' : 'deliveries';
-      try {
-          const { error } = await supabase.from(table).update(data).eq('id', id);
-          if (error) throw error;
-          await fetchData();
-          showToast("Registro atualizado!");
-          return true;
-      } catch (err) {
-          handleSupabaseError(err);
+      const { error } = await supabase.from(table).update(data).eq('id', id);
+      if (error) {
+          showToast(error.message, 'error');
           return false;
       }
+      await fetchData();
+      showToast("Registro atualizado com sucesso!");
+      return true;
   }, [fetchData]);
 
   const handleLogout = async () => {
@@ -205,14 +188,9 @@ const App: React.FC = () => {
                 user_id: session?.user?.id,
                 obra_id: profile?.workId
             };
-            try {
-                const { error } = await supabase.from('deliveries').insert([payload]);
-                if (error) throw error;
-                await fetchData(); showToast('Entrega registrada!'); return true;
-            } catch (err) {
-                handleSupabaseError(err);
-                return false;
-            }
+            const { error } = await supabase.from('deliveries').insert([payload]);
+            if (error) { showToast(error.message, 'error'); return false; }
+            await fetchData(); showToast('Entrega registrada!'); return true;
         }} />}
 
         {activeTab === 'Visitantes' && <VisitorsView addVisitor={async (v) => {
@@ -233,14 +211,9 @@ const App: React.FC = () => {
                 user_id: session?.user?.id,
                 obra_id: profile?.workId
             };
-            try {
-                const { error } = await supabase.from('visitors').insert([payload]);
-                if (error) throw error;
-                await fetchData(); showToast('Visitante registrado!'); return true;
-            } catch (err) {
-                handleSupabaseError(err);
-                return false;
-            }
+            const { error } = await supabase.from('visitors').insert([payload]);
+            if (error) { showToast(error.message, 'error'); return false; }
+            await fetchData(); showToast('Visitante registrado!'); return true;
         }} />}
 
         {activeTab === 'Saida' && <ExitView visitors={visitors} deliveries={deliveries} onMarkExitRequest={markExit} />}
