@@ -94,8 +94,30 @@ const App: React.FC = () => {
       const { data: vData } = await vQuery.order('entry_time', { ascending: false });
       const { data: dData } = await dQuery.order('entry_time', { ascending: false });
       
-      if (vData) setVisitors(vData.map(v => ({ ...v, workId: v.obra_id, entryTime: new Date(v.entry_time), exitTime: v.exit_time ? new Date(v.exit_time) : undefined, platePhoto: v.plate_photo, epi: { helmet: v.helmet, boots: v.boots, glasses: v.glasses }, vehicle: { model: v.vehicle_model, color: v.vehicle_color, plate: v.vehicle_plate }, visitReason: v.visit_reason, person_visited: v.person_visited })));
-      if (dData) setDeliveries(dData.map(d => ({ ...d, workId: d.obra_id, entryTime: new Date(d.entry_time), exitTime: d.exit_time ? new Date(d.exit_time) : undefined, invoicePhoto: d.invoice_photo, platePhoto: d.plate_photo, driverName: d.driver_name, driverDocument: d.driver_document, invoiceNumber: d.invoice_number, licensePlate: d.license_plate })));
+      if (vData) setVisitors(vData.map(v => ({ 
+          ...v, 
+          workId: v.obra_id, 
+          entryTime: new Date(v.entry_time), 
+          exitTime: v.exit_time ? new Date(v.exit_time) : undefined, 
+          platePhoto: v.plate_photo, 
+          epi: { helmet: v.helmet, boots: v.boots, glasses: v.glasses }, 
+          vehicle: { model: v.vehicle_model, color: v.vehicle_color, plate: v.vehicle_plate }, 
+          visitReason: v.visit_reason, 
+          personVisited: v.person_visited 
+      })));
+      
+      if (dData) setDeliveries(dData.map(d => ({ 
+          ...d, 
+          workId: d.obra_id, 
+          entryTime: new Date(d.entry_time), 
+          exitTime: d.exit_time ? new Date(d.exit_time) : undefined, 
+          invoicePhoto: d.invoice_photo, 
+          platePhoto: d.plate_photo, 
+          driverName: d.driver_name, 
+          driverDocument: d.driver_document, 
+          invoiceNumber: d.invoice_number, 
+          licensePlate: d.license_plate 
+      })));
     } catch (err) {
       console.error("Erro ao carregar dados:", err);
     }
@@ -237,7 +259,6 @@ const App: React.FC = () => {
                 user_id: session?.user?.id,
                 obra_id: profile?.workId
             };
-            // Só envia plate_photo se não estiver vazio
             if (v.platePhoto) payload.plate_photo = v.platePhoto;
 
             try {

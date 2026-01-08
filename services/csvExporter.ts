@@ -1,13 +1,16 @@
+
 import { Visitor, Delivery } from '../types';
 
 const formatDate = (date?: Date) => {
-  if (!date) return '';
+  if (!date || isNaN(date.getTime())) return '""';
   return `"${date.toLocaleString('pt-BR')}"`;
 };
 
-const escapeCsvField = (field: string | boolean) => {
+const escapeCsvField = (field: any) => {
+    if (field === null || field === undefined) return '""';
     if (typeof field === 'boolean') return field ? '"Sim"' : '"Não"';
-    return `"${field.replace(/"/g, '""')}"`;
+    const str = String(field);
+    return `"${str.replace(/"/g, '""')}"`;
 }
 
 export const exportToCsv = (visitors: Visitor[], deliveries: Delivery[]) => {
@@ -21,6 +24,7 @@ export const exportToCsv = (visitors: Visitor[], deliveries: Delivery[]) => {
     "Veículo", "Cor", "Placa"
   ];
   csvContent.push(visitorHeaders.join(","));
+  
   visitors.forEach(v => {
     const row = [
         v.id,
@@ -31,12 +35,12 @@ export const exportToCsv = (visitors: Visitor[], deliveries: Delivery[]) => {
         escapeCsvField(v.personVisited),
         formatDate(v.entryTime),
         formatDate(v.exitTime),
-        escapeCsvField(v.epi.helmet),
-        escapeCsvField(v.epi.boots),
-        escapeCsvField(v.epi.glasses),
-        escapeCsvField(v.vehicle.model),
-        escapeCsvField(v.vehicle.color),
-        escapeCsvField(v.vehicle.plate)
+        escapeCsvField(v.epi?.helmet),
+        escapeCsvField(v.epi?.boots),
+        escapeCsvField(v.epi?.glasses),
+        escapeCsvField(v.vehicle?.model),
+        escapeCsvField(v.vehicle?.color),
+        escapeCsvField(v.vehicle?.plate)
     ].join(",");
     csvContent.push(row);
   });
@@ -47,8 +51,18 @@ export const exportToCsv = (visitors: Visitor[], deliveries: Delivery[]) => {
   // Delivery data
   csvContent.push("REGISTRO DE ENTREGAS");
   csvContent.push("ID,Fornecedor,Motorista,Documento do Motorista,Nº da NF,Placa,Horário de Entrada,Horário de Saída");
+  
   deliveries.forEach(d => {
-    const row = [d.id, escapeCsvField(d.supplier), escapeCsvField(d.driverName), escapeCsvField(d.driverDocument), escapeCsvField(d.invoiceNumber), escapeCsvField(d.licensePlate), formatDate(d.entryTime), formatDate(d.exitTime)].join(",");
+    const row = [
+        d.id, 
+        escapeCsvField(d.supplier), 
+        escapeCsvField(d.driverName), 
+        escapeCsvField(d.driverDocument), 
+        escapeCsvField(d.invoiceNumber), 
+        escapeCsvField(d.licensePlate), 
+        formatDate(d.entryTime), 
+        formatDate(d.exitTime)
+    ].join(",");
     csvContent.push(row);
   });
 
