@@ -1,10 +1,10 @@
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { Visitor, Delivery } from '../../types';
 import Modal from '../Modal';
+import { supabase } from '../../lib/supabase';
 import { exportToCsv } from '../../services/csvExporter';
-import { ExportIcon, TruckIcon, UserIcon, SearchIcon, HelmetIcon, BootsIcon, GlassesIcon, CheckCircleIcon, XCircleIcon, ReportsIcon, PencilIcon } from '../icons';
-import { formatDocument } from '../../utils/formatters';
+import { ExportIcon, SearchIcon, HelmetIcon, BootsIcon, GlassesIcon, ReportsIcon, PencilIcon, CameraIcon } from '../icons';
 
 interface ReportsViewProps {
     visitors: Visitor[];
@@ -42,15 +42,14 @@ const ReportsView: React.FC<ReportsViewProps> = ({ visitors, deliveries, activeR
     const [reportType, setReportType] = useState<'deliveries' | 'visitors'>(activeReportType);
     const [isPhotoModalOpen, setIsPhotoModalOpen] = useState(false);
     const [photoModalUrl, setPhotoModalUrl] = useState('');
+    const [isPhotoLoading, setIsPhotoLoading] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
     
-    // Estados para Edição
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const [editingRecord, setEditingRecord] = useState<any>(null);
     const [editFormData, setEditFormData] = useState<any>({});
     const [isUpdating, setIsUpdating] = useState(false);
 
-    // Filtros de Data
     const [startDate, setStartDate] = useState(() => {
         const d = new Date();
         d.setDate(d.getDate() - 7);
@@ -64,11 +63,33 @@ const ReportsView: React.FC<ReportsViewProps> = ({ visitors, deliveries, activeR
         setReportType(activeReportType);
     }, [activeReportType]);
 
-    const handleViewPhoto = (url: string) => {
-        if(!url) return;
-        setPhotoModalUrl(url);
+    // OTIMIZAÇÃO: Busca a foto pesada apenas quando solicitado (Lazy Loading)
+    const handleViewPhoto = useCallback(async (id: number, column: string) => {
+        setIsPhotoLoading(true);
         setIsPhotoModalOpen(true);
-    };
+        setPhotoModalUrl(''); // Limpa a foto anterior
+
+        try {
+            const table = reportType === 'visitors' ? 'visitors' : 'deliveries';
+            const { data, error } = await supabase
+                .from(table)
+                .select(column)
+                .eq('id', id)
+                .single();
+
+            if (error) throw error;
+            if (data && data[column]) {
+                setPhotoModalUrl(data[column]);
+            } else {
+                setPhotoModalUrl('');
+            }
+        } catch (err) {
+            console.error("Erro ao buscar foto:", err);
+            setPhotoModalUrl('');
+        } finally {
+            setIsPhotoLoading(false);
+        }
+    }, [reportType]);
 
     const handleTypeToggle = (type: 'deliveries' | 'visitors') => {
         setReportType(type);
@@ -115,11 +136,7 @@ const ReportsView: React.FC<ReportsViewProps> = ({ visitors, deliveries, activeR
     const handleSaveEdit = async () => {
         setIsUpdating(true);
         const type = reportType === 'visitors' ? 'visitor' : 'delivery';
-        
-        // Garantimos que o payload enviado use snake_case se for visitante (para evitar erros de banco)
-        let payload = { ...editFormData };
-        
-        const success = await onUpdateRecord(type, editingRecord.id, payload);
+        const success = await onUpdateRecord(type, editingRecord.id, editFormData);
         if (success) {
             setIsEditModalOpen(false);
             setEditingRecord(null);
@@ -237,7 +254,7 @@ const ReportsView: React.FC<ReportsViewProps> = ({ visitors, deliveries, activeR
                 <div className="space-y-4">
                     <div className="flex items-center justify-between px-2">
                         <p className="text-[10px] font-black text-brand-text-muted uppercase tracking-widest">
-                            Foram encontrados <span className="text-brand-amber">{filteredData.length}</span> registros neste período
+                            Exibindo <span className="text-brand-amber">{filteredData.length}</span> registros recentes
                         </p>
                     </div>
 
@@ -261,20 +278,20 @@ const ReportsView: React.FC<ReportsViewProps> = ({ visitors, deliveries, activeR
                                     {reportType === 'visitors' && (
                                         <div className="flex flex-col sm:flex-row gap-6">
                                             <div className="relative flex-shrink-0 flex gap-2">
-                                                <img 
-                                                  src={(item as Visitor).photo} 
-                                                  alt={(item as Visitor).name} 
-                                                  className="w-24 h-24 rounded-2xl object-cover cursor-pointer ring-4 ring-brand-charcoal shadow-2xl group-hover:scale-105 transition-transform" 
-                                                  onClick={() => handleViewPhoto((item as Visitor).photo)} 
-                                                />
-                                                {(item as Visitor).platePhoto && (
-                                                    <img 
-                                                      src={(item as Visitor).platePhoto} 
-                                                      alt="Placa" 
-                                                      className="w-24 h-24 rounded-2xl object-cover cursor-pointer ring-4 ring-brand-charcoal shadow-2xl group-hover:scale-105 transition-transform" 
-                                                      onClick={() => handleViewPhoto((item as Visitor).platePhoto!)} 
-                                                    />
-                                                )}
+                                                <button 
+                                                    onClick={() => handleViewPhoto(item.id, 'photo')}
+                                                    className="w-24 h-24 rounded-2xl bg-brand-charcoal border-2 border-brand-steel flex flex-col items-center justify-center text-brand-amber hover:bg-brand-slate transition-all shadow-xl group/btn"
+                                                >
+                                                    <CameraIcon className="w-6 h-6 mb-1 group-hover/btn:scale-110 transition-transform" />
+                                                    <span className="text-[8px] font-black uppercase">FOTO</span>
+                                                </button>
+                                                <button 
+                                                    onClick={() => handleViewPhoto(item.id, 'plate_photo')}
+                                                    className="w-24 h-24 rounded-2xl bg-brand-charcoal border-2 border-brand-steel flex flex-col items-center justify-center text-brand-text-muted hover:bg-brand-slate transition-all shadow-xl group/btn"
+                                                >
+                                                    <CameraIcon className="w-6 h-6 mb-1 group-hover/btn:scale-110 transition-transform" />
+                                                    <span className="text-[8px] font-black uppercase">PLACA</span>
+                                                </button>
                                             </div>
                                             <div className="flex-grow pt-2">
                                                 <h3 className="font-black text-lg text-brand-amber uppercase leading-none mb-2">{(item as Visitor).name}</h3>
@@ -304,8 +321,20 @@ const ReportsView: React.FC<ReportsViewProps> = ({ visitors, deliveries, activeR
                                     {reportType === 'deliveries' && (
                                         <div className="flex flex-col sm:flex-row gap-6">
                                             <div className="flex gap-3 flex-shrink-0">
-                                                <img src={(item as Delivery).invoicePhoto} className="w-20 h-24 rounded-xl object-cover cursor-pointer ring-4 ring-brand-charcoal shadow-2xl group-hover:-rotate-3 transition-transform" onClick={() => handleViewPhoto((item as Delivery).invoicePhoto)}/>
-                                                <img src={(item as Delivery).platePhoto} className="w-20 h-24 rounded-xl object-cover cursor-pointer ring-4 ring-brand-charcoal shadow-2xl group-hover:rotate-3 transition-transform" onClick={() => handleViewPhoto((item as Delivery).platePhoto)} />
+                                                <button 
+                                                    onClick={() => handleViewPhoto(item.id, 'invoice_photo')}
+                                                    className="w-20 h-24 rounded-xl bg-brand-charcoal border-2 border-brand-steel flex flex-col items-center justify-center text-brand-blue hover:bg-brand-slate transition-all shadow-xl group/btn"
+                                                >
+                                                    <CameraIcon className="w-6 h-6 mb-1 group-hover/btn:scale-110 transition-transform" />
+                                                    <span className="text-[8px] font-black uppercase">N. FISCAL</span>
+                                                </button>
+                                                <button 
+                                                    onClick={() => handleViewPhoto(item.id, 'plate_photo')}
+                                                    className="w-20 h-24 rounded-xl bg-brand-charcoal border-2 border-brand-steel flex flex-col items-center justify-center text-brand-text-muted hover:bg-brand-slate transition-all shadow-xl group/btn"
+                                                >
+                                                    <CameraIcon className="w-6 h-6 mb-1 group-hover/btn:scale-110 transition-transform" />
+                                                    <span className="text-[8px] font-black uppercase">PLACA</span>
+                                                </button>
                                              </div>
                                             <div className="flex-grow pt-2">
                                                  <h3 className="font-black text-lg text-brand-blue uppercase leading-none mb-2">{(item as Delivery).supplier}</h3>
@@ -338,8 +367,14 @@ const ReportsView: React.FC<ReportsViewProps> = ({ visitors, deliveries, activeR
             </div>
 
             <Modal isOpen={isPhotoModalOpen} onClose={() => setIsPhotoModalOpen(false)} title="Evidência Fotográfica">
-                <div className="p-1">
-                    <img src={photoModalUrl} alt="Visualização ampliada" className="w-full h-auto rounded-2xl shadow-2xl border-4 border-brand-charcoal" />
+                <div className="p-1 min-h-[200px] flex items-center justify-center">
+                    {isPhotoLoading ? (
+                        <div className="text-brand-amber animate-pulse font-black text-xs uppercase tracking-widest">Baixando imagem...</div>
+                    ) : photoModalUrl ? (
+                        <img src={photoModalUrl} alt="Visualização ampliada" className="w-full h-auto rounded-2xl shadow-2xl border-4 border-brand-charcoal animate-in zoom-in-95 duration-300" />
+                    ) : (
+                        <div className="text-brand-text-muted text-[10px] font-black uppercase">Foto não disponível</div>
+                    )}
                 </div>
             </Modal>
 

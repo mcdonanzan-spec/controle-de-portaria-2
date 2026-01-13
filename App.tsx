@@ -83,23 +83,28 @@ const App: React.FC = () => {
     const isAdmin = profile.role === 'admin' || profile.role === 'administrador';
     
     try {
-      let vQuery = supabase.from('visitors').select('*');
-      let dQuery = supabase.from('deliveries').select('*');
+      // OTIMIZAÇÃO: Selecionamos apenas as colunas de texto/data. 
+      // EXCLUÍMOS: photo, plate_photo, invoice_photo (que são pesadas)
+      const visitorCols = 'id, obra_id, name, document, company, visit_reason, person_visited, entry_time, exit_time, helmet, boots, glasses, vehicle_model, vehicle_color, vehicle_plate';
+      const deliveryCols = 'id, obra_id, supplier, driver_name, driver_document, invoice_number, license_plate, entry_time, exit_time';
+
+      let vQuery = supabase.from('visitors').select(visitorCols);
+      let dQuery = supabase.from('deliveries').select(deliveryCols);
 
       if (!isAdmin && profile.workId) {
         vQuery = vQuery.eq('obra_id', profile.workId);
         dQuery = dQuery.eq('obra_id', profile.workId);
       }
 
-      const { data: vData } = await vQuery.order('entry_time', { ascending: false });
-      const { data: dData } = await dQuery.order('entry_time', { ascending: false });
+      // Limitamos aos últimos 150 registros para evitar lentidão extrema conforme o banco cresce
+      const { data: vData } = await vQuery.order('entry_time', { ascending: false }).limit(150);
+      const { data: dData } = await dQuery.order('entry_time', { ascending: false }).limit(150);
       
       if (vData) setVisitors(vData.map(v => ({ 
           ...v, 
           workId: v.obra_id, 
           entryTime: new Date(v.entry_time), 
           exitTime: v.exit_time ? new Date(v.exit_time) : undefined, 
-          platePhoto: v.plate_photo, 
           epi: { helmet: v.helmet, boots: v.boots, glasses: v.glasses }, 
           vehicle: { model: v.vehicle_model, color: v.vehicle_color, plate: v.vehicle_plate }, 
           visitReason: v.visit_reason, 
@@ -111,8 +116,6 @@ const App: React.FC = () => {
           workId: d.obra_id, 
           entryTime: new Date(d.entry_time), 
           exitTime: d.exit_time ? new Date(d.exit_time) : undefined, 
-          invoicePhoto: d.invoice_photo, 
-          platePhoto: d.plate_photo, 
           driverName: d.driver_name, 
           driverDocument: d.driver_document, 
           invoiceNumber: d.invoice_number, 
@@ -136,9 +139,9 @@ const App: React.FC = () => {
     let msg = err.message || "Erro inesperado ao salvar.";
     
     if (msg.includes("plate_photo")) {
-      msg = "ERRO DE BANCO: A coluna 'plate_photo' não foi encontrada em 'visitors'. Por favor, execute o comando SQL no painel do Supabase.";
+      msg = "ERRO DE BANCO: A coluna 'plate_photo' não foi encontrada em 'visitors'.";
     } else if (msg === "Failed to fetch" || msg.includes("network")) {
-      msg = "CONEXÃO FALHOU: Verifique sua internet ou sinal de celular.";
+      msg = "CONEXÃO FALHOU: Verifique sua internet.";
     }
     
     showToast(msg, 'error');

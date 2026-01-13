@@ -23,7 +23,7 @@ export interface Visitor {
   company: string;
   visitReason: string;
   personVisited: string;
-  photo: string;
+  photo?: string; // Tornou-se opcional para carga lenta
   platePhoto?: string;
   entryTime: Date;
   exitTime?: Date;
@@ -47,8 +47,8 @@ export interface Delivery {
   driverDocument: string;
   invoiceNumber: string;
   licensePlate: string;
-  invoicePhoto: string;
-  platePhoto: string;
+  invoicePhoto?: string; // Tornou-se opcional para carga lenta
+  platePhoto?: string;
   entryTime: Date;
   exitTime?: Date;
 }
